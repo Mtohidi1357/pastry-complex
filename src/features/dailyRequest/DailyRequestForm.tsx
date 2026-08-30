@@ -1,45 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useEffect, useState } from "react";
 import { LoggedInUser } from "../auth/authTypes";
-
-type Product = {
-    id: string;
-    code: string;
-    name: string;
-    displayName: string;
-};
-
-type RequestLine = {
-    id: string;
-    productId: string;
-    previousBalance: number;
-    currentBalance: number;
-    requestedQty: number | null;
-    reportTime: string | null;
-    product: Product;
-};
-
-type NewRequest = {
-    id: string;
-    businessDate: string;
-    status: string;
-    lines: RequestLine[];
-};
-
-type LineDraft = {
-    previousBalance: string;
-    currentBalance: string;
-    requestedQty: string;
-    dirty: boolean;
-    saving: boolean;
-    deleting: boolean;
-    saved: boolean;
-    error?: string;
-};
+import InventoryForm from "./components/InventoryForm";
 
 type RequestFormProps = {
     initBusinessDate: Date;
+    initBranchId:string,
     branchCode: string;
     token: string;
     onClose: () => void;
@@ -49,6 +17,7 @@ type RequestFormProps = {
 
 export default function CreateNewRequestForm({
     initBusinessDate,
+    initBranchId,
     onClose,
     onSaved,
 }: RequestFormProps) {
@@ -56,60 +25,57 @@ export default function CreateNewRequestForm({
     const [user, setUser] = useState<LoggedInUser | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [expanded, setExpanded] = useState(true); // must match sidebar state
-    const [newRequest, setNewRequest] = useState<NewRequest | null>(null);
-    const [businessDate, setBusinessDate] = useState<Date | null>(initBusinessDate);
+    const [newRequestId, setNewRequestId] = useState<string | null>(null);
+    const [businessDate, setBusinessDate] = useState<Date | null>(null);
     const [branchCode, setBranchCode] = useState("");
+    const [branchId, setBranchId] = useState(initBranchId)
     const [showInventoryForm, setShowInventoryForm] = useState(false);
     const [requestCreated, setRequestCreated] = useState(false);
+    const submittigRef =useRef(false);
+    const [loading, setLoading] = useState(false)
+    const [loadError, setLoadError] =
+        useState<string | null>(null);
+    const [successMessage, setSuccessMessage]= useState<string | null>(null)
+    const [submitting, setSubmitting] = useState(false);
+    const [formError, setFormError] =
+        useState<string | null>(null);
+
+    const router = useRouter();
 
     useEffect(() => {
         if (typeof window === "undefined") return;
 
         // Token
-        console.log("token: " + localStorage.getItem("token"));
-        setToken(localStorage.getItem("token") ?? "");
+        //console.log("token: " + localStorage.getItem("token"));
+        const storedToken = localStorage.getItem("token") ?? "";
+        setToken(storedToken);
         console.log("token: " + token);
+        const raw = localStorage.getItem("user");
+        if(!raw) return;
+
         // User (parsed safely)
         try {
-            const raw = localStorage.getItem("user");
-            setBranchCode(JSON.parse(raw).branch.code + " " + JSON.parse(raw).branch.name);
-
-            console.log(JSON.parse(raw));
-            setUser(raw ? JSON.parse(raw) as LoggedInUser : null);
+            const parsedUser = JSON.parse(raw) as LoggedInUser;
+            setUser(parsedUser);
+            setBranchCode(parsedUser.branch.code + " " + parsedUser.branch.name);
+            setBranchId(parsedUser.branch.id);
         } catch {
             setUser(null);
+            setFormError("Invalid user data in local storage.")
         }
     }, []);
-
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] =
-        useState<string | null>(null);
-
-    const [submitting, setSubmitting] = useState(false);
-    const [formError, setFormError] =
-        useState<string | null>(null);
+    
     
     const CreateRequest = async () => {
+        if(submittigRef.current) return;
+        if(requestCreated) return;
+
+        submittigRef.current = true;
         setFormError(null);
-
-        if (requestCreated) {
-            setFormError(
-                "You have already created a request."
-            );
-            return;
-        }
-
-        // if (!capabilities?.canEdit) {
-        //     setFormError(
-        //         "You are not allowed to submit this request."
-        //     );
-        //     return;
-        // }
-
-        setSubmitting(true);
-
+        setSuccessMessage(null);
+        setLoading(true);
+      
         try {
-            alert("create!")
             const res = await fetch(
                 `/api/daily-requests`,
                 {
@@ -125,13 +91,15 @@ export default function CreateNewRequestForm({
 
                     body: JSON.stringify({
                         businessDate: businessDate,
-                        branchId: JSON.parse(raw).branch.id
+                        branchId: branchId
                     }),
                 }
             );
 
-            const response = await res.json();
+            const response = await res.json().catch(() => null);
+
             console.log(response);
+
             if (!res.ok || !response.success) {
                 throw new Error(
                     response.message ??
@@ -139,8 +107,17 @@ export default function CreateNewRequestForm({
                 );
             }
 
+            if(!response?.success){
+                throw new Error(response?.message ?? "Failed to create request.")
+            }
+
+            setRequestCreated(true);
+            setNewRequestId(response.data.id);
+            setSuccessMessage(`Request created for ${user?.branch.name} at date: ${businessDate}`);
+
             onSaved?.();
             onClose();
+            return response.data.id
 
         } catch (error) {
             setFormError(
@@ -149,9 +126,11 @@ export default function CreateNewRequestForm({
                     : "Failed to create request."
             );
         } finally {
-            setSubmitting(false);
+            submittigRef.current = false;
+            setLoading(false);
         }
     }
+
     return (
         <section className="w-full rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-2xl border border-blue-400/30 p-6">
             {/* Header */}
@@ -172,7 +151,11 @@ export default function CreateNewRequestForm({
                     </label>
                     <input
                         type="date"
-                        value={businessDate?.toString()}
+                        value={businessDate ? businessDate.toISOString().split("T")[0] : ""}
+                        onChange={(e) =>
+                            setBusinessDate(e.target.value ? new Date(e.target.value) : null)
+                        }
+                        disabled={loading}
                         className="mt-2 w-full rounded-xl bg-white/10 text-white border border-blue-400/40 px-4 py-3 placeholder:text-blue-200 outline-none focus:ring-2 focus:ring-cyan-300 transition"
                     />
                 </div>
@@ -191,31 +174,51 @@ export default function CreateNewRequestForm({
 
                 <button
                     type="button"
-                    onClick={() => {
-                        setShowInventoryForm((prev) => !prev);
-                        alert();
+                    onClick={async => {
+                        if (!businessDate) {
+                            setFormError("Business date must be picked.");
+                            return;
+                        }
                         CreateRequest();
+                        if (newRequestId) {
+                            setShowInventoryForm(true);
+                        }
+                        //console.log("create clicked");
+
                     }}
+                    disabled={loading || requestCreated}
                     className="sm:w-36 rounded-xl bg-cyan-400 py-3 font-semibold text-blue-950 shadow-lg transition hover:bg-cyan-300 active:scale-[0.98]"
                 >
-                    Create
+                    {requestCreated ? "Created" : loading ? "Creating..." : "Create"}
                 </button>
             </div>
 
             {/* InventoryForm appears below the row when Create is clicked */}
             {showInventoryForm && (
-                <div className="mt-6 rounded-xl border border-blue-400/30 bg-white/10 p-5 backdrop-blur">
-                    {/* 👇 Put your InventoryForm content here */}
-                    <p className="text-sm text-blue-100">
-                        InventoryForm fields go here.
-                    </p>
-                </div>
+                <InventoryForm
+                    requestId={newRequestId ?? ""}
+                    token={token}
+                    onClose={() => 
+                        setShowInventoryForm(false)
+                    }
+                    onSaved={() => router.push("/")}
+                    onSubmitted={() =>
+                        router.push("/dashboard/inbox")
+                    }
+                />
             )}
 
             {/* Error Message */}
             {formError && (
                 <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/20 px-4 py-3 text-center text-sm text-red-100">
                     {formError}
+                </div>
+            )}
+
+            {/* Success Message */}
+            {successMessage && (
+                <div className="mt-4 rounded-lg border border-green-400/30 bg-red-500/20 px-4 py-3 text-center text-sm text-green-100">
+                    {successMessage}
                 </div>
             )}
         </section>

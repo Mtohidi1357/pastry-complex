@@ -59,6 +59,7 @@ export default function InventoryForm({
     onClose,
     onSaved,
 }: InventoryFormProps) {
+    console.log(requestId)
     const [request, setRequest] =
         useState<InventoryRequest | null>(null);
 
@@ -79,6 +80,7 @@ export default function InventoryForm({
     const loadRequest = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
+        console.log(requestId);
 
         try {
             const res = await fetch(
@@ -100,7 +102,7 @@ export default function InventoryForm({
             }
 
             const data = response.data;
-
+            console.log(data);
             setRequest(data.request);
             setCapabilities(data.capabilities);
 
