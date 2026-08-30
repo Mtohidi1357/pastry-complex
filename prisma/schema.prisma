@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Branch {
+  id          String     @id @default(uuid())
+  code        String     @unique
+  name        String
+  type        BranchType
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  displayName String
+  users       User[]
+  dailyRequests DailyRequest[] @relation("BranchRequest")
+
+  @@map("branches")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  displayName String
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id               String            @id @default(uuid())
+  username         String            @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  isActive         Boolean           @default(true)
+  branchId         String
+  roleId           String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  assignedRequests DailyRequest[]    @relation("AssignedTo")
+  createdRequests  DailyRequest[]    @relation("CreatedBy")
+  deletedRequests  DailyRequest[]    @relation("DeletedBy")
+  branch           Branch            @relation(fields: [branchId], references: [id])
+  role             Role              @relation(fields: [roleId], references: [id])
+  workflowHistory  WorkflowHistory[]
+
+  @@index([branchId])
+  @@index([roleId])
+  @@map("users")
+}
+
+model ProductCategory {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  name         String
+  description  String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  displayOrder Int       @default(0)
+  displayName  String
+  products     Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id                String             @id @default(uuid())
+  code              String             @unique
+  name              String
+  categoryId        String
+  unit              Unit
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  displayName       String
+  barcode           String?            @unique
+  notes             String?
+  productionOrder   Int                @default(0)
+  sortOrder         Int                @default(0)
+  dailyRequestLines DailyRequestLine[]
+  category          ProductCategory    @relation(fields: [categoryId], references: [id])
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+model DailyRequest {
+  id           String             @id @default(uuid())
+  businessDate DateTime
+  status       RequestStatus      @default(DRAFT)
+  branchId     String
+  createdById  String
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  completedAt  DateTime?
+  reportedAt   DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  assignedToId String?
+  lastActionAt DateTime?
+  deletedAt    DateTime?
+  deletedById  String?
+  cancelledAt  DateTime?
+  lines        DailyRequestLine[]
+  assignedTo   User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy    User               @relation("CreatedBy", fields: [createdById], references: [id])
+  deletedBy    User?              @relation("DeletedBy", fields: [deletedById], references: [id])
+  branch       Branch?            @relation("BranchRequest",fields: [branchId], references: [id])
+  history      WorkflowHistory[]
+
+  @@index([branchId, businessDate])
+  @@index([status])
+  @@index([businessDate])
+  @@index([assignedToId], map: "daily_requests_assignedToId_fkey")
+  @@index([createdById], map: "daily_requests_createdById_fkey")
+  @@index([deletedById], map: "daily_requests_deletedById_fkey")
+  @@map("daily_requests")
+}
+
+model DailyRequestLine {
+  id              String       @id @default(uuid())
+  dailyRequestId  String
+  productId       String
+  previousBalance Int
+  currentBalance  Int
+  reportTime      DateTime?
+  requestedQty    Int?
+  producedQty     Int?
+  receivedQty     Int?
+  managerNote     String?
+  workshopNote    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  dailyRequest    DailyRequest @relation(fields: [dailyRequestId], references: [id])
+  product         Product      @relation(fields: [productId], references: [id])
+
+  @@unique([dailyRequestId, productId])
+  @@index([productId])
+  @@map("daily_request_lines")
+}
+
+model WorkflowHistory {
+  id             String         @id @default(uuid())
+  dailyRequestId String
+  userId         String
+  fromStatus     RequestStatus?
+  toStatus       RequestStatus
+  note           String?
+  action         String
+  changedAt      DateTime       @default(now())
+  dailyRequest   DailyRequest   @relation(fields: [dailyRequestId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+
+  @@index([dailyRequestId])
+  @@index([userId])
+  @@map("workflow_history")
+}
+
+enum BranchType {
+  SALES
+  BAKERY
+}
+
+enum RequestStatus {
+  DRAFT
+  INVENTORY_SUBMITTED
+  MANAGER_SUBMITTED
+  WORKSHOP_PROCESSING
+  COMPLETED
+  CLOSED
+  CANCELLED
+}
+
+enum Unit {
+  PCS
+  KG
+  GR
+  LITER
+  BOX
+}
