@@ -1,0 +1,10 @@
+# from inside the folder
+git init
+git remote add origin https://github.com/YOUR-USERNAME/REPOSITORY-NAME.git
+git fetch origin
+git reset --hard origin/main
+
+
+git checkout master          # or: git switch master
+git branch --set-upstream-to=origin/master
+git pull                     # verify sync
