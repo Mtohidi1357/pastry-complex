@@ -2,7 +2,7 @@
 git init
 git remote add origin https://github.com/YOUR-USERNAME/REPOSITORY-NAME.git
 git fetch origin
-git reset --hard origin/main
+git reset --hard origin/master
 
 
 git checkout master          # or: git switch master
