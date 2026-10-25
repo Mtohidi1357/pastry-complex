@@ -41,7 +41,7 @@ type LineDraft = {
     saving: boolean;
     deleting: boolean;
     saved: boolean;
-    error?: LineError | String;
+    error?: LineError | string;
     warning?: LineWarning;
 };
 

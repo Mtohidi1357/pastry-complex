@@ -1,5 +1,16 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { 
+  createContext,
+  useContext,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import { useRouter } from "next/router";
+
+import type { LoggedInUser } from "@/features/auth/authTypes";
+import {
+  useStoredValue,
+  notifyAuthChange,
+} from "@/hooks/useStoredValue";
 
 type User = {
   id: number;
@@ -8,30 +19,50 @@ type User = {
 };
 
 type AuthContextType = {
-  user: User | null;
+  user: LoggedInUser | null;
   token: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 };
 
-const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+const AuthContext = createContext<AuthContextType | null>(null);
+
+const subscribeHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // const [user, setUser] = useState<User | null>(null);
+  // const [token, setToken] = useState<string | null>(null);
+  // const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const token = useStoredValue("token");
+  const storedUser = useStoredValue("user");
+  const hydrated = useSyncExternalStore(
+    subscribeHydration,
+    clientSnapshot,
+    serverSnapshot,
+  );
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+  let user: LoggedInUser | null = null;
+
+  if (token && storedUser) {
+    try {
+      user = JSON.parse(storedUser) as LoggedInUser;
+    } catch {
+      // Ignore invalid stored user data.
     }
-    setLoading(false);
-  }, []);
+  }
+  // useEffect(() => {
+  //   const storedToken = localStorage.getItem("token");
+  //   const storedUser = localStorage.getItem("user");
+  //   if (storedToken && storedUser) {
+  //     setToken(storedToken);
+  //     setUser(JSON.parse(storedUser));
+  //   }
+  //   setLoading(false);
+  // }, []);
 
   const login = async (username: string, password: string) => {
     const res = await fetch("/api/auth/login", {
@@ -40,32 +71,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, password }),
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message);
+    const response = await res.json();
+
+    if (!res.ok || !response.success) {
+      throw new Error(response.error?.message ?? "Login failed");
     }
 
-    const data = await res.json();
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    router.push("/");
+    const session = response.data?.token;
+
+    if (typeof session?.token !== "string" || !session.user) {
+      throw new Error("Invalid login response.");
+    }
+
+    localStorage.setItem("token", session.token);
+    localStorage.setItem("user", JSON.stringify(session.user));
+    document.cookie = `token=${session.token}; path=/; max-age=86400; SameSite=Lax`;
+    notifyAuthChange();
+    router.push("/dashboard/inbox");
   };
 
   const logout = () => {
-    setToken(null);
-    setUser(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    document.cookie = "token=; path=/; max-age=0";
+    notifyAuthChange();
     router.push("/login");
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading: !hydrated }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const context =  useContext(AuthContext);
+
+  if(!context) {
+    throw new Error("useAuth must be used  inside AuthProvider.");
+  }
+
+  return context;
+  }

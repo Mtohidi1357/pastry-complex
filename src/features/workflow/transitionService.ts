@@ -155,12 +155,32 @@ export async function transition(
         );
 
     return prisma.$transaction(async (tx) => {
-        const updatedRequest =
-            await dailyRequestRepository.update(
-                tx,
-                request.requestId,
-                timeStampedUpdate
-            );
+    //     const updatedRequest =
+    //         await dailyRequestRepository.update(
+    //             tx,
+    //             request.requestId,
+    //             timeStampedUpdate
+    //         );
+    const updatedRequest = await tx.dailyRequest.update({
+            where: {
+                id: request.requestId,
+                status: dailyRequest.status,
+                assignedToId: dailyRequest.assignedToId,
+                updatedAt: dailyRequest.updatedAt,
+                deletedAt: null,
+            },
+            data: timeStampedUpdate,
+        }).catch((error: unknown) => {
+            if (typeof error === "object" && error !== null &&
+                "code" in error && error.code === "P2025") {
+                throw new BusinessError(
+                    BusinessErrorCode.REQUEST_CHANGED,
+                    "This request changed. Refresh it before trying again.",
+                    409,
+                );
+            }
+            throw error;
+        });
 
         const history = await dailyRequestRepository.createHistory(
             tx,

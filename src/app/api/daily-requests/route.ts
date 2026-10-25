@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
     try {
-        console.log(req);
+        //console.log(req);
         const body = await req.json();
         const currentUser = await authenticate(req)
         const dto =

@@ -46,6 +46,7 @@ export const dailyRequestLineRepository = {
 
     async updateProdQuantity(
         db: DbClient,
+        requestId: string,
         lineId: string,
         quantities: RecordProductionDTO,
     ): Promise<DailyRequestLine | null> {
@@ -69,6 +70,7 @@ export const dailyRequestLineRepository = {
 
     async updateRequestQuantity(
         db: DbClient,
+        requestId: string,
         lineId: string,
         quantities: RecordRequestDTO,
     ): Promise<DailyRequestLine | null> {
@@ -91,6 +93,7 @@ export const dailyRequestLineRepository = {
 
     async updateInventoryQuantity(
         db: DbClient,
+        requestId: string,
         lineId: string,
         quantities: RecordInventoryDTO,
     ): Promise<DailyRequestLine | null> {
@@ -110,6 +113,7 @@ export const dailyRequestLineRepository = {
 
     async updateRecivingQuantity(
         db: DbClient,
+        requestId: string,
         lineId: string,
         quantities: RecordReceivingDTO,
     ): Promise<DailyRequestLine | null> {

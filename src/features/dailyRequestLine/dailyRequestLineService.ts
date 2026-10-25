@@ -19,6 +19,7 @@ import {
     RecordReceivingDTO,
     RecordRequestDTO,
 } from "./dailyRequestLineTypes";
+import { check } from "zod";
 
 export const dailyRequestLineService = {
     async createLine(
@@ -26,15 +27,8 @@ export const dailyRequestLineService = {
         newLinePayLoad: CreateLineDTO,
         currentUser: CurrentUser
     ) {
-        const productExists = await ensureProductExists(
-            newLinePayLoad.productId,
-        );
-
-        const existing = await ensureProductNotAlreadyInRequest(
-            newLinePayLoad.productId,
-            requestId,
-        );
-
+        await ensureProductExists(newLinePayLoad.productId);
+        await ensureProductNotAlreadyInRequest(newLinePayLoad.productId, requestId);
 
         const request = await loadEditableRequest(requestId);
 
@@ -90,8 +84,6 @@ export const dailyRequestLineService = {
             )
         };
 
-        const { lines, ...rest } = request;
-
         if (request?.lines.length === 1
             && request.status !== RequestStatus.DRAFT
         ) {
@@ -103,8 +95,8 @@ export const dailyRequestLineService = {
 
         //CHeck permission to delete through policy ...
         const policyCheck = requestPolicy.canDelete({
-            request: rest,
-            currentUser
+            request,
+            currentUser,
         });
 
         if (!policyCheck.allowed) {
@@ -162,9 +154,12 @@ export const dailyRequestLineService = {
                 policyCheck.reason
             )
         }
+        await ensureLineBelongsToRequest(requestId, lineId);
+
         const dailyRequestLine =
             await dailyRequestLineRepository.updateProdQuantity(
                 prisma,
+                requestId,
                 lineId,
                 prodLinePayload,
 
@@ -202,9 +197,12 @@ export const dailyRequestLineService = {
                 policyCheck.reason
             )
         }
+        await ensureLineBelongsToRequest(requestId, lineId);
+
         const dailyRequestLine =
             await dailyRequestLineRepository.updateRequestQuantity(
                 prisma,
+                requestId,
                 lineId,
                 requestLinePayLoad,
             );
@@ -231,7 +229,7 @@ export const dailyRequestLineService = {
             );
         };
 
-        if(!request.lines.some(line => line.id === lineId)){
+        if (!request.lines.some(line => line.id === lineId)) {
             throw new BusinessError(
                 BusinessErrorCode.LINE_REQUEST_MISMATCH,
                 "Line does not belong to the request."
@@ -249,14 +247,14 @@ export const dailyRequestLineService = {
             )
         };
 
-        if(inventoryLinePayload.requestedQty === 0) {
+        if (inventoryLinePayload.requestedQty === 0) {
             throw new BusinessError(
                 BusinessErrorCode.ZERO_QTY_REQUEST_NOT_ALLOWED,
                 "You must provide a non-zero value for request."
             )
         };
 
-        if(
+        if (
             inventoryLinePayload.currentBalance > inventoryLinePayload.previousBalance
         ) {
             throw new BusinessError(
@@ -268,6 +266,7 @@ export const dailyRequestLineService = {
         const dailyRequestLine =
             await dailyRequestLineRepository.updateInventoryQuantity(
                 prisma,
+                requestId,
                 lineId,
                 inventoryLinePayload,
             );
@@ -303,11 +302,14 @@ export const dailyRequestLineService = {
                 policyCheck.reason
             )
         }
+        await ensureLineBelongsToRequest(requestId, lineId);
+
         const dailyRequestLine =
             await dailyRequestLineRepository.updateRecivingQuantity(
                 prisma,
+                requestId,
                 lineId,
-                {receivedQty: receivingLinePayload.receivedQty},
+                { receivedQty: receivingLinePayload.receivedQty },
             );
 
         return dailyRequestLine;
@@ -335,49 +337,12 @@ export const dailyRequestLineService = {
         const variance = checkedLine.requestedQty - checkedLine.producedQty;
         return {
             id: lineId,
-            productId: requestLine?.productId!,
-            requestedQty: requestLine?.requestedQty!,
-            producedQty: requestLine?.producedQty!,
-            variance: variance,
+            productId: requestLine.productId!,
+            requestedQty: checkedLine.requestedQty,
+            producedQty: checkedLine.producedQty,
+            variance,
         }
     },
-}
-
-async function ensureProductExists(
-    productId: string
-): Promise<Product> {
-    const checkExists = await productRepository.findActiveById(
-        prisma,
-        productId,
-    );
-
-    if (!checkExists) {
-        throw new BusinessError(
-            BusinessErrorCode.PRODUCT_NOT_FOUND,
-            "Product is not valid."
-        );
-    }
-
-    return checkExists;
-}
-
-async function ensureProductNotAlreadyInRequest(
-    productId: string,
-    requestId: string,
-): Promise<{ id: string } | null> {
-    const existing = await dailyRequestLineRepository.existsProductInRequest(
-        prisma,
-        productId,
-        requestId,
-    );
-
-    if (existing) {
-        throw new Error(
-            "The product is already in the request."
-        );
-    };
-
-    return existing;
 }
 
 async function loadEditableRequest(
@@ -397,4 +362,49 @@ async function loadEditableRequest(
 
     return request;
 
+}
+
+async function ensureLineBelongsToRequest(requestId: string, lineId: string) {
+    const line = await dailyRequestLineRepository.findById(prisma, lineId);
+    if (!line || line.dailyRequestId !== requestId) {
+        throw new BusinessError(
+            BusinessErrorCode.LINE_REQUEST_MISMATCH,
+            "Line does not belong to the request.",
+        );
+    }
+}
+
+async function ensureProductExists(
+    productId: string
+): Promise<Product> {
+    const product = await productRepository.findActiveById(
+        prisma,
+        productId,
+    );
+
+    if (!product) {
+        throw new BusinessError(
+            BusinessErrorCode.PRODUCT_NOT_FOUND,
+            "Product is not valid.",
+        );
+    }
+
+    return product;
+}
+
+async function ensureProductNotAlreadyInRequest(
+    productId: string,
+    requestId: string,
+): Promise<void> {
+    const existing = await dailyRequestLineRepository.existsProductInRequest(
+        prisma,
+        productId,
+        requestId,
+    );
+
+    if (!existing) {
+        throw new Error(
+            "The product is already in request."
+        );
+    }
 }

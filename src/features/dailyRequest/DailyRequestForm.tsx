@@ -2,14 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
+import { useStoredValue } from "@/hooks/useStoredValue";
 import { LoggedInUser } from "../auth/authTypes";
 import InventoryForm from "./components/InventoryForm";
 
 type RequestFormProps = {
     initBusinessDate: Date;
-    initBranchId:string,
-    branchCode: string;
-    token: string;
+    initBranchId: string,
     onClose: () => void;
     onSaved?: () => void;
     onSubmitted: () => void;
@@ -21,60 +20,61 @@ export default function CreateNewRequestForm({
     onClose,
     onSaved,
 }: RequestFormProps) {
-    const [token, setToken] = useState("");
-    const [user, setUser] = useState<LoggedInUser | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [expanded, setExpanded] = useState(true); // must match sidebar state
     const [newRequestId, setNewRequestId] = useState<string | null>(null);
-    const [businessDate, setBusinessDate] = useState<Date | null>(null);
-    const [branchCode, setBranchCode] = useState("");
-    const [branchId, setBranchId] = useState(initBranchId)
+    const [businessDate, setBusinessDate] = useState<Date | null>(initBusinessDate);
     const [showInventoryForm, setShowInventoryForm] = useState(false);
     const [requestCreated, setRequestCreated] = useState(false);
-    const submittigRef =useRef(false);
+    const submittigRef = useRef(false);
     const [loading, setLoading] = useState(false)
     const [loadError, setLoadError] =
         useState<string | null>(null);
-    const [successMessage, setSuccessMessage]= useState<string | null>(null)
+    const [successMessage, setSuccessMessage] = useState<string | null>(null)
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] =
         useState<string | null>(null);
 
     const router = useRouter();
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
+    const token = useStoredValue("token") ?? "";
+    const storedUser = useStoredValue("user");
 
-        // Token
-        //console.log("token: " + localStorage.getItem("token"));
-        const storedToken = localStorage.getItem("token") ?? "";
-        setToken(storedToken);
-        console.log("token: " + token);
-        const raw = localStorage.getItem("user");
-        if(!raw) return;
+    let user: LoggedInUser | null = null;
+    let storageError: string | null = null;
 
-        // User (parsed safely)
+    if (storedUser) {
         try {
-            const parsedUser = JSON.parse(raw) as LoggedInUser;
-            setUser(parsedUser);
-            setBranchCode(parsedUser.branch.code + " " + parsedUser.branch.name);
-            setBranchId(parsedUser.branch.id);
+            const parsed = JSON.parse(storedUser) as LoggedInUser;
+
+            if (!parsed?.branch?.id) {
+                storageError = "Stored user data has no branch.";
+            } else {
+                user = parsed;
+            }
         } catch {
-            setUser(null);
-            setFormError("Invalid user data in local storage.")
+            storageError = "Invalid user data in local storage.";
         }
-    }, []);
-    
+    }
+
+    const branchId = user?.branch.id ?? initBranchId;
+    const branchCode = user
+        ? `${user.branch.code} ${user.branch.name}`
+        : "";
     
     const CreateRequest = async () => {
-        if(submittigRef.current) return;
-        if(requestCreated) return;
-
+        if (submittigRef.current) return null;
+        if (requestCreated) return null;
+        if (!token || !user || storageError){
+            setFormError(storageError ?? "Please login again.");
+            return;
+        }
         submittigRef.current = true;
         setFormError(null);
         setSuccessMessage(null);
         setLoading(true);
-      
+        let rVal;
+
         try {
             const res = await fetch(
                 `/api/daily-requests`,
@@ -102,27 +102,20 @@ export default function CreateNewRequestForm({
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
-                    "Failed to create request."
+                    response.message ?
+                        response.message + ' 106' :
+                        "Failed to create request."
                 );
-            }
-
-            if(!response?.success){
-                throw new Error(response?.message ?? "Failed to create request.")
             }
 
             setRequestCreated(true);
             setNewRequestId(response.data.id);
+            setShowInventoryForm(true);
             setSuccessMessage(`Request created for ${user?.branch.name} at date: ${businessDate}`);
-
-            onSaved?.();
-            onClose();
-            return response.data.id
-
         } catch (error) {
             setFormError(
                 error instanceof Error
-                    ? error.message
+                    ? error.message + " 125"
                     : "Failed to create request."
             );
         } finally {
@@ -174,17 +167,13 @@ export default function CreateNewRequestForm({
 
                 <button
                     type="button"
-                    onClick={async => {
+                    onClick={async () => {
                         if (!businessDate) {
                             setFormError("Business date must be picked.");
                             return;
                         }
-                        CreateRequest();
-                        if (newRequestId) {
-                            setShowInventoryForm(true);
-                        }
-                        //console.log("create clicked");
 
+                        await CreateRequest();
                     }}
                     disabled={loading || requestCreated}
                     className="sm:w-36 rounded-xl bg-cyan-400 py-3 font-semibold text-blue-950 shadow-lg transition hover:bg-cyan-300 active:scale-[0.98]"
@@ -194,24 +183,20 @@ export default function CreateNewRequestForm({
             </div>
 
             {/* InventoryForm appears below the row when Create is clicked */}
-            {showInventoryForm && (
+            {newRequestId && (
                 <InventoryForm
-                    requestId={newRequestId ?? ""}
+                    requestId={newRequestId}
                     token={token}
-                    onClose={() => 
-                        setShowInventoryForm(false)
-                    }
+                    onClose={() => setNewRequestId(null)}
                     onSaved={() => router.push("/")}
-                    onSubmitted={() =>
-                        router.push("/dashboard/inbox")
-                    }
+                    onSubmitted={() => router.push("/dashboard/inbox")}
                 />
             )}
 
             {/* Error Message */}
-            {formError && (
+            {(formError || storageError) && (
                 <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/20 px-4 py-3 text-center text-sm text-red-100">
-                    {formError}
+                    {formError || storageError}
                 </div>
             )}
 

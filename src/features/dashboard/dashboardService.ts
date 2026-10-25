@@ -14,8 +14,8 @@ interface TrendItem {
 }
 
 interface BranchPerformance {
-    branchId: String
-    branchName: String,
+    branchId: string
+    branchName: string,
     totalRequests: number,
     completed: number | undefined,
     cancelled: number | undefined,

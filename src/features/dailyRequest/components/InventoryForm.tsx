@@ -58,8 +58,9 @@ export default function InventoryForm({
     token,
     onClose,
     onSaved,
+    onSubmitted,
 }: InventoryFormProps) {
-    console.log(requestId)
+    //console.log(requestId)
     const [request, setRequest] =
         useState<InventoryRequest | null>(null);
 
@@ -141,7 +142,7 @@ export default function InventoryForm({
         } catch (error) {
             setLoadError(
                 error instanceof Error
-                    ? error.message
+                    ? error.message + " 145"
                     : "Failed to load request."
             );
         } finally {
@@ -470,7 +471,7 @@ export default function InventoryForm({
         } catch (error) {
             setFormError(
                 error instanceof Error
-                    ? error.message
+                    ? error.message + " 474"
                     : "Failed to submit inventory."
             );
         } finally {

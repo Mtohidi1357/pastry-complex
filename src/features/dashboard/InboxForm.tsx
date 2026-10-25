@@ -12,6 +12,7 @@ import ReceivingForm from "../dailyRequest/components/ReceivingForm";
 import Sidebar from "@/components/layout/Sidebar";
 import { Roles } from "@/lib/constants/roles";
 import { LoggedInUser } from "../auth/authTypes";
+import { useStoredValue } from "@/hooks/useStoredValue";
 
 type InventoryLine = {
     id: string;
@@ -60,13 +61,26 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function InboxForm() {
-    const [token, setToken] = useState("");
-    const [user, setUser] = useState<LoggedInUser | null>(null);
+    // const [token, setToken] = useState("");
+    // const [user, setUser] = useState<LoggedInUser | null>(null);
+    const token = useStoredValue("token") ?? "";
+    const storedUser = useStoredValue("user");
+
+    let user: LoggedInUser | null = null;
+
+    if (storedUser) {
+        try {
+            user = JSON.parse(storedUser) as LoggedInUser;
+        } catch {
+            //Ignore invalid stored user data.
+        }
+    }
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [expanded, setExpanded] = useState(true); // must match sidebar state
     const [inbox, setInbox] = useState<WorkItem[]>([]);
     const [totalItems, setTotalItems] = useState(0);
-    const [loading, setLoading] = useState(false);
+    const [fetching, setLoading] = useState(true);
+    const loading = Boolean(token) && fetching;
     const [error, setError] = useState<string | null>(null);
     const [selectedRequestId, setSelectedRequestId] =
         useState<string | null>(null);
@@ -74,61 +88,83 @@ export default function InboxForm() {
 
     const router = useRouter();
 
-    useEffect(() => {
-    if (typeof window === "undefined") return;
+    const handleSubformClose = async () => {
+        setSelectedRequestId(null);
+        setWorkFlowAction(null);
+        await loadInbox();
+    };
 
-    // Token
-    console.log("token: " + localStorage.getItem("token"));
-    setToken(localStorage.getItem("token") ?? "");
-    console.log("token: " + token);
-    // User (parsed safely)
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) as LoggedInUser : null);
-      console.log(user?.role);
-    } catch {
-      setUser(null);
+    // Fetch data only; no state updates.
+const fetchInbox = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch("/api/dashboard/inbox", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        signal,
+    });
+
+    if (!res.ok) {
+        throw new Error("Failed to load inbox.");
     }
-    }, []);
 
-    const loadInbox = useCallback(async () => {
-        setLoading(true);
-        setError(null);
+    const response = await res.json();
+    return response.data;
+}, [token]);
 
-        try {
-            const res = await fetch("/api/dashboard/inbox", {
-                method: "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token,
-                },
-            });
+// Refresh after a button click or workflow action.
+const loadInbox = useCallback(async () => {
+    if (!token) return;
 
-            if (!res.ok) {
-                throw new Error("Failed to load inbox.");
-            }
+    setLoading(true);
+    setError(null);
 
-            const data = await res.json();
-            setInbox(data.data.items);
-            setTotalItems(data.data.totalItems);
-        } catch (err) {
+    try {
+        const data = await fetchInbox();
+        setInbox(data.items);
+        setTotalItems(data.totalItems);
+    } catch (err) {
+        setError(
+            err instanceof Error
+                ? err.message
+                : "Failed to load inbox."
+        );
+    } finally {
+        setLoading(false);
+    }
+}, [fetchInbox, token]);
+
+// Initial load: update state in the network completion callbacks.
+useEffect(() => {
+    if (!token) return;
+
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    fetchInbox(signal)
+        .then((data) => {
+            if (signal.aborted) return;
+
+            setInbox(data.items);
+            setTotalItems(data.totalItems);
+            setError(null);
+        })
+        .catch((err: unknown) => {
+            if (signal.aborted) return;
+
             setError(
                 err instanceof Error
                     ? err.message
                     : "Failed to load inbox."
             );
-        } finally {
-            setLoading(false);
-        }
-    }, [token]);
-     
-    useEffect(() => {
-        if(token){
-            loadInbox();
-        }
-    }, [loadInbox, token]);
+        })
+        .finally(() => {
+            if (!signal.aborted) {
+                setLoading(false);
+            }
+        });
 
-
+    return () => controller.abort();
+}, [fetchInbox, token]);
     const handleRequestDetail = async (
         requestId: string,
         action: WorkflowAction
@@ -397,6 +433,7 @@ export default function InboxForm() {
                                                 </button>
                                             )}
 
+                                        {/* CANCEL_REQUEST */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.CANCEL_REQUEST
                                         ) && (
@@ -414,9 +451,9 @@ export default function InboxForm() {
                                                 <InventoryForm
                                                     requestId={item.id}
                                                     token={token}
-                                                    onClose={() =>
-                                                        setSelectedRequestId(null)
-                                                    }
+                                                    onClose={() => {
+                                                        void handleSubformClose();
+                                                    }}
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
@@ -430,9 +467,9 @@ export default function InboxForm() {
                                                 <RequestedQuantityForm
                                                     requestId={item.id}
                                                     token={token}
-                                                    onClose={() =>
-                                                        setSelectedRequestId(null)
-                                                    }
+                                                    onClose={() => {
+                                                        void handleSubformClose();
+                                                    }}
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
@@ -446,9 +483,9 @@ export default function InboxForm() {
                                                 <ProductionForm
                                                     requestId={item.id}
                                                     token={token}
-                                                    onClose={() =>
-                                                        setSelectedRequestId(null)
-                                                    }
+                                                    onClose={() => {
+                                                        void handleSubformClose();
+                                                    }}
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
@@ -462,9 +499,9 @@ export default function InboxForm() {
                                                 <ReceivingForm
                                                     requestId={item.id}
                                                     token={token}
-                                                    onClose={() =>
-                                                        setSelectedRequestId(null)
-                                                    }
+                                                    onClose={() => {
+                                                        void handleSubformClose();
+                                                    }}
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);

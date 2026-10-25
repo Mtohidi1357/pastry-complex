@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { notifyAuthChange, useStoredValue } from "@/hooks/useStoredValue";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -27,9 +28,33 @@ function getAvatarUrl(userName?: string) {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<TokenPayload | null>(null);
+  // const [user, setUser] = useState<TokenPayload | null>(null);
   const [expanded, setExpanded] = useState(false); // desktop: full vs icon-only  
   const [isMobile, setIsMobile] = useState(false);
+
+  const token = useStoredValue("token");
+      // localStorage.getItem("token") ||
+      // document.cookie
+      //   .split("; ")
+      //   .find((row) => row.startsWith("token="))
+      //   ?.split("=")[1];
+    //console.log(token);
+    let user: TokenPayload | null = null;
+    if (token) {
+      try {
+        const decoded = jwtDecode<{
+          username: string;
+          roleCode: string;
+        }>(token);
+
+         user = {
+          userName: decoded.username,
+          roleCode: decoded.roleCode,
+        }
+      } catch {
+        console.error("Invalid token");
+      }
+    }
 
   useEffect(() => {
     const handleResize = () => {
@@ -40,34 +65,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  useEffect(() => {
-    const token =
-      localStorage.getItem("token") ||
-      document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("token="))
-        ?.split("=")[1];
-    //console.log(token);
-    if (token) {
-      try {
-        const decoded = jwtDecode<{
-          username: string;
-          roleCode: string;
-        }>(token);
-        setUser({
-          userName: decoded.username,
-          roleCode: decoded.roleCode
-        });
-        //console.log(jwtDecode(token));
-      } catch {
-        console.error("Invalid token");
-      }
-    }
-  }, []);
+  // useEffect(() => {
+    
+  //       // setUser({
+  //       //   userName: decoded.username,
+  //       //   roleCode: decoded.roleCode
+  //       // });
+  //       //console.log(jwtDecode(token));
+       
+  // }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     document.cookie = "token=; path=/; max-age=0";
+    notifyAuthChange();
     router.push("/login");
   };
 

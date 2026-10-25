@@ -458,7 +458,7 @@ export default function ProductionForm({
     //console.log("R 1");
     return (
         
-        <section className="rounded-xl border bg-white shadow">
+        <section className="rounded-xl border bg-white text-gray-900 shadow">
 
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
@@ -551,7 +551,7 @@ export default function ProductionForm({
                                 >
 
                                     {/* Product */}
-                                    <td className="px-3 py-1.5">
+                                    <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
 
                                         <div className="whitespace-nowrap font-medium">
                                             {
@@ -572,7 +572,7 @@ export default function ProductionForm({
                                     </td>
 
                                     {/* Requested */}
-                                    <td className="px-2 py-1.5">
+                                    <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
 
                                         <input
                                             type="number"
@@ -596,7 +596,7 @@ export default function ProductionForm({
                                     </td>
 
                                     {/* Produced */}
-                                    <td className="px-2 py-1.5">
+                                    <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
 
                                         <input
                                             type="number"
