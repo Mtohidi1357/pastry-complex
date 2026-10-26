@@ -20,6 +20,7 @@ import {
     RecordRequestDTO,
 } from "./dailyRequestLineTypes";
 import { check } from "zod";
+import { requireRequestReadAccess } from "../dailyRequest/requestReadAccess";
 
 export const dailyRequestLineService = {
     async createLine(
@@ -117,13 +118,28 @@ export const dailyRequestLineService = {
     },
 
     async getLine(
+        requestId: string,
         lineId: string,
+        currentUser: CurrentUser,
     ) {
-        const result = await dailyRequestLineRepository.findById(
-            prisma,
-            lineId
-        );
-        return result;
+        await requireRequestReadAccess(requestId, currentUser);
+
+        const line = await prisma.dailyRequestLine.findFirst({
+            where : {
+                id: lineId,
+                dailyRequestId: requestId,
+            },
+        });
+
+        if (!line) {
+            throw new AppError(
+                ApiErrorCode.NOT_FOUND,
+                "Request line not found.",
+                404,
+            );
+        }
+        
+        return line;
     },
 
     async recordProduction(
@@ -150,7 +166,7 @@ export const dailyRequestLineService = {
         });
 
         if (!policyCheck.allowed) {
-            throw new Error(
+            throw new PermissionDeniedError(
                 policyCheck.reason
             )
         }
@@ -193,7 +209,7 @@ export const dailyRequestLineService = {
         });
 
         if (!policyCheck.allowed) {
-            throw new Error(
+            throw new PermissionDeniedError(
                 policyCheck.reason
             )
         }
@@ -402,7 +418,7 @@ async function ensureProductNotAlreadyInRequest(
         requestId,
     );
 
-    if (!existing) {
+    if (existing) {
         throw new Error(
             "The product is already in request."
         );

@@ -9,6 +9,7 @@ import { CurrentUser } from "../auth/authTypes";
 import { requestPolicy } from "./requestPolicy";
 import { Roles } from "@/lib/constants/roles";
 import { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
+import { requireRequestReadAccess } from "./requestReadAccess";
 
 export interface CreateDailyRequest {
     businessDate: Date;
@@ -123,7 +124,8 @@ export const dailyRequestService = {
         requestId: string,
         currentUser: CurrentUser
     ) {
-
+        await requireRequestReadAccess(requestId, currentUser);
+        
         const request =
             await dailyRequestRepository.findByIdWithLines(
                 prisma,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { RequestCapabilities } from "../requestPolicy/requestCapabilities";
 import { WorkflowAction } from "../workflow/wrokFlowDefinition";
@@ -60,6 +60,25 @@ const STATUS_COLORS: Record<string, string> = {
     DELETED: "red",
 };
 
+async function fetchInboxData(
+    token: string,
+    signal?: AbortSignal,
+) {
+    const res = await fetch("/api/dashboard/inbox", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        signal,
+    });
+
+    if(!res.ok) {
+        throw new Error("Failed to load inbox.")
+    }
+
+    const response = await res.json();
+    return response.data;
+}
+
 export default function InboxForm() {
     // const [token, setToken] = useState("");
     // const [user, setUser] = useState<LoggedInUser | null>(null);
@@ -85,6 +104,8 @@ export default function InboxForm() {
     const [selectedRequestId, setSelectedRequestId] =
         useState<string | null>(null);
     const [workFlowAction, setWorkFlowAction] = useState<WorkflowAction | null>(null);
+    const productionOpeningRef = useRef(false);
+    const [openingProductionId, setOpeningProductionId] = useState<string | null>(null);
 
     const router = useRouter();
 
@@ -94,32 +115,15 @@ export default function InboxForm() {
         await loadInbox();
     };
 
-    // Fetch data only; no state updates.
-const fetchInbox = useCallback(async (signal?: AbortSignal) => {
-    const res = await fetch("/api/dashboard/inbox", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-        signal,
-    });
-
-    if (!res.ok) {
-        throw new Error("Failed to load inbox.");
-    }
-
-    const response = await res.json();
-    return response.data;
-}, [token]);
-
 // Refresh after a button click or workflow action.
-const loadInbox = useCallback(async () => {
+const loadInbox = async () => {
     if (!token) return;
 
     setLoading(true);
     setError(null);
 
     try {
-        const data = await fetchInbox();
+        const data = await fetchInboxData(token);
         setInbox(data.items);
         setTotalItems(data.totalItems);
     } catch (err) {
@@ -131,7 +135,7 @@ const loadInbox = useCallback(async () => {
     } finally {
         setLoading(false);
     }
-}, [fetchInbox, token]);
+};
 
 // Initial load: update state in the network completion callbacks.
 useEffect(() => {
@@ -140,7 +144,7 @@ useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
 
-    fetchInbox(signal)
+    fetchInboxData(token, signal)
         .then((data) => {
             if (signal.aborted) return;
 
@@ -164,7 +168,7 @@ useEffect(() => {
         });
 
     return () => controller.abort();
-}, [fetchInbox, token]);
+}, [token]);
     const handleRequestDetail = async (
         requestId: string,
         action: WorkflowAction
@@ -174,36 +178,80 @@ useEffect(() => {
     };
 
     const handleTransition = async (
-        requestId: string,
-        action: WorkflowAction,
-    ) => {
-        try {
-
-            const res = await fetch(`/api/daily-requests/${requestId}/transition`, {
+    requestId: string,
+    action: WorkflowAction,
+): Promise<boolean> => {
+    try {
+        const res = await fetch(
+            `/api/daily-requests/${requestId}/transition`,
+            {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token,
+                    Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({
-                    action,
-                })
-            });
+                body: JSON.stringify({ action }),
+            },
+        );
 
-            const data = await res.json();
+        const response = await res.json();
 
-            if (!res.ok) {
-                throw new Error(
-                    data?.message ?? "Transition failed."
-                );
-            };
-            //console.log(data);
-            await loadInbox();
-
-        } catch {
-
+        if (!res.ok || !response.success) {
+            throw new Error(
+                response.error?.message ??
+                response.message ??
+                "Transition failed.",
+            );
         }
-    };
+
+        await loadInbox();
+        return true;
+    } catch (err) {
+        setError(
+            err instanceof Error
+                ? err.message
+                : "Transition failed.",
+        );
+
+        return false;
+    }
+};
+
+const handleProductionOpen = async (
+    requestId: string,
+    status: RequestStatus,
+) => {
+    if (productionOpeningRef.current) return;
+
+    productionOpeningRef.current = true;
+    setOpeningProductionId(requestId);
+    setError(null);
+
+    // Close any previously selected subform.
+    setSelectedRequestId(null);
+    setWorkFlowAction(null);
+
+    try {
+        if (status === RequestStatus.MANAGER_SUBMITTED) {
+            const succeeded = await handleTransition(
+                requestId,
+                WorkflowAction.START_PRODUCTION,
+            );
+
+            if (!succeeded) return;
+        } else if (status !== RequestStatus.WORKSHOP_PROCESSING) {
+            setError("This request is not available for production.");
+            return;
+        }
+
+        // Open only after the transition succeeds, or when already processing.
+        setSelectedRequestId(requestId);
+        setWorkFlowAction(WorkflowAction.START_PRODUCTION);
+    } finally {
+        productionOpeningRef.current = false;
+        setOpeningProductionId(null);
+    }
+};
 
     return (
         <div className="w-full max-w-4xl rounded-2xl bg-white/10 backdrop-blur-lg p-8 shadow-2xl border border-white/20">
@@ -397,22 +445,18 @@ useEffect(() => {
                                             WorkflowAction.START_PRODUCTION
                                         ) || item.capabilities.availableActions.includes(
                                             WorkflowAction.COMPLETE_PRODUCTION
-                                        )) && (
-                                                <button type="button"
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
+                                            )) && (
+                                                <button
+                                                    type="button"
+                                                    disabled={openingProductionId !== null}
+                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                                     onClick={() => {
-                                                        handleRequestDetail(
-                                                            item.id,
-                                                            WorkflowAction.START_PRODUCTION
-                                                        );
-                                                        if (item.status !== RequestStatus.WORKSHOP_PROCESSING) {
-                                                            handleTransition(
-                                                                item.id,
-                                                                WorkflowAction.START_PRODUCTION
-                                                            );
-                                                        }
-                                                    }}>
-                                                    Record/Edit Production
+                                                        void handleProductionOpen(item.id, item.status);
+                                                    }}
+                                                >
+                                                    {openingProductionId === item.id
+                                                        ? "Opening..."
+                                                        : "Record/Edit Production"}
                                                 </button>
                                             )}
 

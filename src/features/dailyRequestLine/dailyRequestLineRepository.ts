@@ -63,7 +63,10 @@ export const dailyRequestLineRepository = {
         return null;
     }
         return db.dailyRequestLine.update({
-        where: { id: lineId },
+        where: { 
+            id: lineId,
+            dailyRequestId: requestId,
+         },
         data,
     });      
     },
@@ -86,7 +89,10 @@ export const dailyRequestLineRepository = {
         return null;
     }
         return db.dailyRequestLine.update({
-        where: { id: lineId },
+        where: { 
+            id: lineId,
+            dailyRequestId: requestId,
+         },
         data,
     });      
     },
@@ -106,7 +112,10 @@ export const dailyRequestLineRepository = {
     };
 
     return db.dailyRequestLine.update({
-        where: { id: lineId },
+        where: { 
+            id: lineId,
+            dailyRequestId: requestId,
+         },
         data,
     });      
     },
@@ -129,7 +138,10 @@ export const dailyRequestLineRepository = {
         return null;
     }
         return db.dailyRequestLine.update({
-        where: { id: lineId },
+        where: { 
+            id: lineId,
+            dailyRequestId: requestId,
+         },
         data,
     });      
     },

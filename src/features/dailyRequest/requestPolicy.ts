@@ -9,6 +9,7 @@ import {
 import { canPerformAction, PermissionRequest } from "../workflow/permissionService";
 import { RequestCapabilities } from "../requestPolicy/requestCapabilities";
 import { WorkflowDefinition, WorkflowAction } from "../workflow/wrokFlowDefinition";
+import { tr } from "zod/locales";
 
 export interface RequestPolicyContext {
     request: DailyRequest;
@@ -24,13 +25,70 @@ export interface PolicyResult {
 
 }
 
+function checkQuantityEditAccess({
+    request,
+    currentUser,
+}: RequestPolicyContext): PolicyResult{
+    if (request.deletedAt) {
+        return{
+            allowed: false,
+            reason: "This request has already been deleted.",
+        };
+    }
+
+    if (request.assignedToId !== currentUser.id) {
+        return {
+            allowed: false,
+            reason: "This request is not assigned to you.",
+        };
+    }
+
+    if (currentUser.roleCode !== Roles.WM && request.branchId !== currentUser.branchId) {
+        return {
+            allowed: false,
+            reason: "You cannot edit requests from another branch.",
+        };
+    }
+
+    return {allowed: true};
+}
+
 export const requestPolicy = {
 
     canView(
         context: RequestPolicyContext
     ): PolicyResult {
+        const { request, currentUser} = context;
+
+        if (request.deletedAt) {
+            return {
+                allowed: false,
+                reason: "This request has been deleted.",
+            };
+        }
+
+        if (currentUser.roleCode === Roles.ADMIN) {
+            return {
+                allowed: true
+            };
+        }
+
+        if (
+            (currentUser.roleCode === Roles.INV || currentUser.roleCode === Roles.BM) && 
+            request.branchId === currentUser.branchId
+         ) {
+            return {allowed: true};
+        }
+
+        if (
+            currentUser.roleCode === Roles.WM &&
+            request.assignedToId === currentUser.id
+        ) {
+            return {allowed: true};
+        }
         return {
-            allowed: true,
+            allowed: false,
+            reason: "You are not allowed to view this request.",
         };
     },
 
@@ -240,6 +298,11 @@ export const requestPolicy = {
         context: RequestPolicyContext,
     ): PolicyResult {
         const { request, currentUser } = context;
+        const access = checkQuantityEditAccess(context);
+
+        if (!access.allowed) {
+            return access;
+        }
 
         if (request.status !== RequestStatus.WORKSHOP_PROCESSING) {
             return {
@@ -265,6 +328,11 @@ export const requestPolicy = {
         context: RequestPolicyContext,
     ): PolicyResult {
         const { request, currentUser } = context;
+        const access = checkQuantityEditAccess(context);
+
+        if (!access.allowed) {
+            return access;
+        }
 
         if (request.status !== RequestStatus.DRAFT &&
             request.status !== RequestStatus.INVENTORY_SUBMITTED
@@ -294,6 +362,11 @@ export const requestPolicy = {
         context: RequestPolicyContext,
     ): PolicyResult {
         const { request, currentUser } = context;
+        const access = checkQuantityEditAccess(context);
+
+        if (!access.allowed) {
+            return access;
+        }
 
         if (request.status !== RequestStatus.COMPLETED) {
             return {
@@ -349,9 +422,7 @@ export const requestPolicy = {
                 action: action
             }
 
-            if (
-                canPerformAction(argPermissionReq)
-            ) {
+            if (canPerformAction(argPermissionReq).allowed) {
                 actions.push(action);
             }
         }

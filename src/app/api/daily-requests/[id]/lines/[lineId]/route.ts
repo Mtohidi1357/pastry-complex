@@ -24,7 +24,9 @@ export async function GET(
 
         const result =
             await dailyRequestLineService.getLine(
-                lineId
+                id,
+                lineId,
+                currentUser,
             );
 
         return success(result);

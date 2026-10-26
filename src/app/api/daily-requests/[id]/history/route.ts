@@ -4,6 +4,7 @@ import { success, failure } from "@/lib/centralResponse";
 import { AppError } from "@/errors/AppError";
 import { ApiErrorCode } from "@/types/api";
 import { getHistory } from "@/features/workflow/workflowService";
+import { CurrentUser } from "@/features/auth/authTypes";
 
 export async function GET(
     req: NextRequest,
@@ -22,6 +23,7 @@ export async function GET(
         const result =
             await getHistory(
                 id,
+                currentUser,
             );
 
         return success(result);
