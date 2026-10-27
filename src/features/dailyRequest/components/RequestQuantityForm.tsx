@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithEditLease } from "../editLeaseClient";
+
 import { useCallback, useEffect, useState } from "react";
 
 type Product = {
@@ -18,7 +20,6 @@ type RequestLine = {
     reportTime: string | null;
     product: Product;
 };
-
 type RequestCapabilities = {
     canView: boolean;
     canEdit: boolean;
@@ -44,10 +45,10 @@ type LineDraft = {
     saved: boolean;
     error?: string;
 };
-
 type RequestFormProps = {
     requestId: string;
     token: string;
+    editorToken: string;
     onClose: () => void;
     onSaved?: () => void;
     onSubmitted: () => void;
@@ -56,6 +57,7 @@ type RequestFormProps = {
 export default function RequestedQuantityForm({
     requestId,
     token,
+    editorToken,
     onClose,
     onSaved,
 }: RequestFormProps) {
@@ -64,7 +66,6 @@ export default function RequestedQuantityForm({
 
     const [capabilities, setCapabilities] =
         useState<RequestCapabilities | null>(null);
-
     const [drafts, setDrafts] =
         useState<Record<string, LineDraft>>({});
 
@@ -79,9 +80,8 @@ export default function RequestedQuantityForm({
     const loadRequest = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}`,
                 {
                     headers: {
@@ -91,10 +91,9 @@ export default function RequestedQuantityForm({
             );
 
             const response = await res.json();
-
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to load request."
                 );
             }
@@ -108,7 +107,6 @@ export default function RequestedQuantityForm({
                 string,
                 LineDraft
             > = {};
-
             for (const line of data.request.lines) {
                 initialDrafts[line.id] = {
                     previousBalance:
@@ -120,7 +118,6 @@ export default function RequestedQuantityForm({
                         String(
                             line.currentBalance ?? ""
                         ),
-
                     requestedQty:
                         line.requestedQty === null
                             ? ""
@@ -134,7 +131,6 @@ export default function RequestedQuantityForm({
                     saved: false,
                 };
             }
-
             setDrafts(initialDrafts);
         } catch (error) {
             setLoadError(
@@ -145,12 +141,11 @@ export default function RequestedQuantityForm({
         } finally {
             setLoading(false);
         }
-    }, [requestId, token]);
+    }, [requestId, token, editorToken]);
 
     useEffect(() => {
         loadRequest();
     }, [loadRequest]);
-
     const updateDraft = (
         lineId: string,
         field: keyof Pick<
@@ -173,7 +168,6 @@ export default function RequestedQuantityForm({
 
                 [lineId]: {
                     ...existing,
-
                     [field]: value,
 
                     dirty: true,
@@ -197,7 +191,6 @@ export default function RequestedQuantityForm({
 
         const previousBalance =
             Number(draft.previousBalance);
-
         const currentBalance =
             Number(draft.currentBalance);
 
@@ -205,7 +198,6 @@ export default function RequestedQuantityForm({
             Number(draft.requestedQty);
 
         let validationError: string | undefined;
-
         if (
             draft.previousBalance === "" ||
             draft.currentBalance === "" ||
@@ -229,7 +221,6 @@ export default function RequestedQuantityForm({
             validationError =
                 "Current balance cannot be greater than previous balance.";
         }
-
         if (validationError) {
             setDrafts(current => ({
                 ...current,
@@ -252,9 +243,8 @@ export default function RequestedQuantityForm({
                 error: undefined,
             },
         }));
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "PATCH",
@@ -266,7 +256,6 @@ export default function RequestedQuantityForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         operation:
                             "RECORD_REQUESTEDQTY",
@@ -279,10 +268,9 @@ export default function RequestedQuantityForm({
             );
 
             const response = await res.json();
-
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to save Request."
                 );
             }
@@ -299,7 +287,6 @@ export default function RequestedQuantityForm({
                     error: undefined,
                 },
             }));
-
             onSaved?.();
         } catch (error) {
             setDrafts(current => ({
@@ -318,7 +305,6 @@ export default function RequestedQuantityForm({
             }));
         }
     };
-
     const deleteLine = async (
         lineId: string,
         productName: string) => {
@@ -338,7 +324,6 @@ export default function RequestedQuantityForm({
 
         setDrafts(current => ({
             ...current,
-
             [lineId]: {
                 ...current[lineId],
                 deleting: true,
@@ -347,7 +332,7 @@ export default function RequestedQuantityForm({
         }));
 
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "DELETE",
@@ -358,12 +343,11 @@ export default function RequestedQuantityForm({
                     },
                 }
             );
-
             const response = await res.json();
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to delete line."
                 );
             }
@@ -375,7 +359,6 @@ export default function RequestedQuantityForm({
 
                 return {
                     ...current,
-
                     lines: current.lines.filter(
                         line => line.id !== lineId
                     ),
@@ -395,7 +378,6 @@ export default function RequestedQuantityForm({
 
                 [lineId]: {
                     ...current[lineId],
-
                     deleting: false,
 
                     error:
@@ -414,7 +396,6 @@ export default function RequestedQuantityForm({
 
     const submitRequest = async () => {
         setFormError(null);
-
         if (hasUnsavedChanges) {
             setFormError(
                 "You have unsaved Request changes. Save them before submitting."
@@ -430,9 +411,8 @@ export default function RequestedQuantityForm({
         }
 
         setSubmitting(true);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/transition`,
                 {
                     method: "POST",
@@ -444,7 +424,6 @@ export default function RequestedQuantityForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         action: "SUBMIT_MANAGER",
                     }),
@@ -455,11 +434,10 @@ export default function RequestedQuantityForm({
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to submit Request."
                 );
             }
-
             // The request has now moved to the
             // next workflow state.
             onSaved?.();
@@ -475,7 +453,6 @@ export default function RequestedQuantityForm({
             setSubmitting(false);
         }
     };
-
     if (loading) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -485,7 +462,6 @@ export default function RequestedQuantityForm({
             </section>
         );
     }
-
     if (loadError || !request) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -493,7 +469,6 @@ export default function RequestedQuantityForm({
                     {loadError ??
                         "Request could not be loaded."}
                 </p>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -510,12 +485,10 @@ export default function RequestedQuantityForm({
 
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
-
                 <div>
                     <h2 className="text-base font-semibold">
                         Record Requested Qty
                     </h2>
-
                     <div className="mt-0.5 text-xs text-gray-500">
                         Request: {request.id}
                         {" · "}
@@ -525,7 +498,6 @@ export default function RequestedQuantityForm({
                         ).toLocaleDateString()}
                     </div>
                 </div>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -534,7 +506,6 @@ export default function RequestedQuantityForm({
                     Close
                 </button>
             </div>
-
             {/* Permission warning */}
             {!capabilities?.canEdit && (
                 <div className="border-b bg-yellow-50 px-4 py-2 text-xs text-yellow-700">
@@ -547,7 +518,6 @@ export default function RequestedQuantityForm({
                     {formError}
                 </div>
             )}
-
             {/* Spreadsheet */}
             <div className="max-h-[60vh] overflow-auto">
 
@@ -560,7 +530,6 @@ export default function RequestedQuantityForm({
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                                 Product
                             </th>
-
                             <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
                                 Previous
                             </th>
@@ -568,7 +537,6 @@ export default function RequestedQuantityForm({
                             <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
                                 Current
                             </th>
-
                             <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
                                 Requested
                             </th>
@@ -582,7 +550,6 @@ export default function RequestedQuantityForm({
                     </thead>
 
                     <tbody>
-
                         {request.lines.map(line => {
                             const draft =
                                 drafts[line.id];
@@ -594,16 +561,13 @@ export default function RequestedQuantityForm({
                             const busy =
                                 draft.saving ||
                                 draft.deleting;
-
                             return (
                                 <tr
                                     key={line.id}
                                     className="border-b last:border-b-0 hover:bg-gray-50"
                                 >
-
                                     {/* Product */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <div className="whitespace-nowrap font-medium">
                                             {
                                                 line
@@ -611,7 +575,6 @@ export default function RequestedQuantityForm({
                                                     .displayName
                                             }
                                         </div>
-
                                         <div className="text-[10px] text-gray-400">
                                             {
                                                 line
@@ -621,10 +584,8 @@ export default function RequestedQuantityForm({
                                         </div>
 
                                     </td>
-
                                     {/* Previous */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -644,12 +605,10 @@ export default function RequestedQuantityForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Current */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -669,12 +628,10 @@ export default function RequestedQuantityForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Requested */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <input
                                             type="number"
                                             min="1"
@@ -694,14 +651,12 @@ export default function RequestedQuantityForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Actions */}
                                     <td className="px-3 py-1.5">
 
                                         <div className="flex items-center gap-2 whitespace-nowrap">
-
                                             {draft.saving ? (
                                                 <span className="text-gray-400">
                                                     saving...
@@ -729,11 +684,9 @@ export default function RequestedQuantityForm({
                                                     save
                                                 </button>
                                             )}
-
                                             <span className="text-gray-300">
                                                 |
                                             </span>
-
                                             {draft.deleting ? (
                                                 <span className="text-gray-400">
                                                     deleting...
@@ -756,7 +709,6 @@ export default function RequestedQuantityForm({
                                                     delete
                                                 </button>
                                             )}
-
                                         </div>
 
                                         {draft.error && (
@@ -770,7 +722,6 @@ export default function RequestedQuantityForm({
                                 </tr>
                             );
                         })}
-
                     </tbody>
 
                 </table>
@@ -785,14 +736,12 @@ export default function RequestedQuantityForm({
                     {request.lines.length === 1
                         ? ""
                         : "s"}
-
                     {hasUnsavedChanges && (
                         <span className="ml-3 text-amber-600">
                             unsaved changes
                         </span>
                     )}
                 </div>
-
                 <button
                     type="button"
                     onClick={submitRequest}
@@ -807,9 +756,9 @@ export default function RequestedQuantityForm({
                         ? "submitting..."
                         : "Submit Request"}
                 </button>
-
             </div>
 
         </section>
     );
 }
+

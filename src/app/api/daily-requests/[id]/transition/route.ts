@@ -7,7 +7,6 @@ import { transition } from "@/features/workflow/transitionService";
 import { authenticate } from "@/features/auth/authMiddleware";
 import { NextRequest } from "next/server";
 import { BusinessError } from "@/errors/BusinessError";
-
 export async function POST(
     req: NextRequest,
     {
@@ -23,14 +22,14 @@ export async function POST(
         console.log(body);
         const dto =
             TransitionSchema.parse(body);
-        
+
         await transition({
             requestId: id,
             currentUser,
             action: dto.action,
             note: dto.note,
+            editorToken: req.headers.get("X-Request-Edit-Token") ?? undefined,
         });
-
         return success(
             {
                 message:
@@ -52,7 +51,6 @@ export async function POST(
         }
 
         if (error instanceof AppError) {
-
             return failure(
                 error.code,
                 error.message,
@@ -61,7 +59,6 @@ export async function POST(
             );
         }
         if (error instanceof BusinessError) {
-
             return failure(
                 error.code,
                 error.message,
@@ -77,3 +74,4 @@ export async function POST(
     }
 
 }
+

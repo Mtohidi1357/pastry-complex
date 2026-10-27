@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { useStoredValue } from "@/hooks/useStoredValue";
 import { LoggedInUser } from "../auth/authTypes";
+import RequestEditSession from "./RequestEditSession";
 import InventoryForm from "./components/InventoryForm";
 
 type RequestFormProps = {
@@ -13,7 +14,6 @@ type RequestFormProps = {
     onSaved?: () => void;
     onSubmitted: () => void;
 };
-
 export default function CreateNewRequestForm({
     initBusinessDate,
     initBranchId,
@@ -34,7 +34,6 @@ export default function CreateNewRequestForm({
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] =
         useState<string | null>(null);
-
     const router = useRouter();
 
     const token = useStoredValue("token") ?? "";
@@ -46,7 +45,6 @@ export default function CreateNewRequestForm({
     if (storedUser) {
         try {
             const parsed = JSON.parse(storedUser) as LoggedInUser;
-
             if (!parsed?.branch?.id) {
                 storageError = "Stored user data has no branch.";
             } else {
@@ -56,12 +54,11 @@ export default function CreateNewRequestForm({
             storageError = "Invalid user data in local storage.";
         }
     }
-
     const branchId = user?.branch.id ?? initBranchId;
     const branchCode = user
         ? `${user.branch.code} ${user.branch.name}`
         : "";
-    
+
     const CreateRequest = async () => {
         if (submittigRef.current) return null;
         if (requestCreated) return null;
@@ -74,7 +71,6 @@ export default function CreateNewRequestForm({
         setSuccessMessage(null);
         setLoading(true);
         let rVal;
-
         try {
             const res = await fetch(
                 `/api/daily-requests`,
@@ -88,7 +84,6 @@ export default function CreateNewRequestForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         businessDate: businessDate,
                         branchId: branchId
@@ -99,7 +94,6 @@ export default function CreateNewRequestForm({
             const response = await res.json().catch(() => null);
 
             console.log(response);
-
             if (!res.ok || !response.success) {
                 throw new Error(
                     response.message ?
@@ -107,7 +101,6 @@ export default function CreateNewRequestForm({
                         "Failed to create request."
                 );
             }
-
             setRequestCreated(true);
             setNewRequestId(response.data.id);
             setShowInventoryForm(true);
@@ -123,7 +116,6 @@ export default function CreateNewRequestForm({
             setLoading(false);
         }
     }
-
     return (
         <section className="w-full rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-2xl border border-blue-400/30 p-6">
             {/* Header */}
@@ -135,7 +127,6 @@ export default function CreateNewRequestForm({
                     <p className="text-sm text-blue-200">New Daily Request</p>
                 </div>
             </div>
-
             {/* Row: three elements side by side */}
             <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-3">
                 <div className="flex-1">
@@ -152,7 +143,6 @@ export default function CreateNewRequestForm({
                         className="mt-2 w-full rounded-xl bg-white/10 text-white border border-blue-400/40 px-4 py-3 placeholder:text-blue-200 outline-none focus:ring-2 focus:ring-cyan-300 transition"
                     />
                 </div>
-
                 <div className="flex-1">
                     <label className="text-sm font-medium text-blue-100">
                         Branch
@@ -164,7 +154,6 @@ export default function CreateNewRequestForm({
                         className="mt-2 w-full rounded-xl bg-white/10 text-white border border-blue-400/40 px-4 py-3 outline-none opacity-70 cursor-not-allowed focus:ring-2 focus:ring-cyan-300 transition"
                     />
                 </div>
-
                 <button
                     type="button"
                     onClick={async () => {
@@ -172,7 +161,6 @@ export default function CreateNewRequestForm({
                             setFormError("Business date must be picked.");
                             return;
                         }
-
                         await CreateRequest();
                     }}
                     disabled={loading || requestCreated}
@@ -181,25 +169,27 @@ export default function CreateNewRequestForm({
                     {requestCreated ? "Created" : loading ? "Creating..." : "Create"}
                 </button>
             </div>
-
             {/* InventoryForm appears below the row when Create is clicked */}
             {newRequestId && (
-                <InventoryForm
-                    requestId={newRequestId}
-                    token={token}
-                    onClose={() => setNewRequestId(null)}
-                    onSaved={() => router.push("/")}
-                    onSubmitted={() => router.push("/dashboard/inbox")}
-                />
+                <RequestEditSession key={newRequestId} requestId={newRequestId} token={token}
+                    onClose={() => router.push("/dashboard/inbox")}>
+                    {editorToken => (
+                        <InventoryForm
+                            requestId={newRequestId}
+                            token={token}
+                            editorToken={editorToken}
+                            onClose={() => router.push("/dashboard/inbox")}
+                            onSubmitted={() => router.push("/dashboard/inbox")}
+                        />
+                    )}
+                </RequestEditSession>
             )}
-
             {/* Error Message */}
             {(formError || storageError) && (
                 <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/20 px-4 py-3 text-center text-sm text-red-100">
                     {formError || storageError}
                 </div>
             )}
-
             {/* Success Message */}
             {successMessage && (
                 <div className="mt-4 rounded-lg border border-green-400/30 bg-red-500/20 px-4 py-3 text-center text-sm text-green-100">
@@ -209,3 +199,4 @@ export default function CreateNewRequestForm({
         </section>
     );
 }
+

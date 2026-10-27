@@ -1,3 +1,4 @@
+import { withRequestEditLease } from "./withRequestEditLease";
 import { prisma, } from "@/lib/prisma";
 import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository";
 import { productRepository } from "@/features/products/productRepository";
@@ -10,7 +11,6 @@ import { requestPolicy } from "./requestPolicy";
 import { Roles } from "@/lib/constants/roles";
 import { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
 import { requireRequestReadAccess } from "./requestReadAccess";
-
 export interface CreateDailyRequest {
     businessDate: Date;
 
@@ -29,7 +29,6 @@ export const dailyRequestService = {
                 request.branchId,
                 request.businessDate
             );
-
         if (existing) {
             throw new DuplicateBusinessDateRequestError();
         }
@@ -47,7 +46,6 @@ export const dailyRequestService = {
                 "Users only can create requests for thier own branch."
             );
         }
-
         return prisma.$transaction(async (tx) => {
             const dailyRequest =
                 await dailyRequestRepository.create(
@@ -60,7 +58,6 @@ export const dailyRequestService = {
                                 id: request.branchId,
                             },
                         },
-
                         createdBy: {
                             connect: {
                                 id: currentUser.id,
@@ -76,7 +73,6 @@ export const dailyRequestService = {
                         status: RequestStatus.DRAFT,
                     }
                 );
-
             const lines =
                 products.map(product => ({
                     dailyRequestId: dailyRequest.id,
@@ -94,38 +90,21 @@ export const dailyRequestService = {
             return dailyRequest;
         });
     },
-
-    async softDeleteReq(
-        id: string,
-        currentUser: CurrentUser,
-    ) {
-        const existing =
-            await dailyRequestRepository.findById(
-                prisma,
-                id,
-            );
-
-        if (!existing) {
-            throw new RequestNotFoundError();
-        }
-
-        return prisma.$transaction(async (tx) => {
-            const deletedRequest =
-                await dailyRequestRepository.softDelete(
-                    tx,
-                    id,
-                    currentUser.id
-                );
-        })
-
+    async softDeleteReq(id: string, currentUser: CurrentUser, editorToken?: string) {
+        return withRequestEditLease(id, currentUser, editorToken, async (tx) => {
+            const request = await dailyRequestRepository.findById(tx, id);
+            if (!request) throw new RequestNotFoundError();
+            const permission = requestPolicy.canDelete({ request, currentUser });
+            if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
+            return dailyRequestRepository.softDelete(tx, id, currentUser.id);
+        }, true);
     },
-
     async getRequestWithCapabilities(
         requestId: string,
         currentUser: CurrentUser
     ) {
         await requireRequestReadAccess(requestId, currentUser);
-        
+
         const request =
             await dailyRequestRepository.findByIdWithLines(
                 prisma,
@@ -135,7 +114,6 @@ export const dailyRequestService = {
         if (!request) {
             throw new Error("Request not found.");
         }
-
         const capabilities =
             requestPolicy.buildCapabilities({
                 request,
@@ -158,7 +136,6 @@ export const dailyRequestService = {
             )
 
         const { items, totalItems } = request;
-
         const totalPages = Math.ceil(totalItems / query.pageSize);
 
         const page = query.page;
@@ -178,3 +155,4 @@ export const dailyRequestService = {
         };
     }
 }
+

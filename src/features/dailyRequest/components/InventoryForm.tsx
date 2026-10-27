@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithEditLease } from "../editLeaseClient";
+
 import { useCallback, useEffect, useState } from "react";
 
 type Product = {
@@ -18,7 +20,6 @@ type InventoryLine = {
     reportTime: string | null;
     product: Product;
 };
-
 type RequestCapabilities = {
     canView: boolean;
     canEdit: boolean;
@@ -44,10 +45,10 @@ type LineDraft = {
     saved: boolean;
     error?: string;
 };
-
 type InventoryFormProps = {
     requestId: string;
     token: string;
+    editorToken: string;
     onClose: () => void;
     onSaved?: () => void;
     onSubmitted: () => void;
@@ -56,6 +57,7 @@ type InventoryFormProps = {
 export default function InventoryForm({
     requestId,
     token,
+    editorToken,
     onClose,
     onSaved,
     onSubmitted,
@@ -66,7 +68,6 @@ export default function InventoryForm({
 
     const [capabilities, setCapabilities] =
         useState<RequestCapabilities | null>(null);
-
     const [drafts, setDrafts] =
         useState<Record<string, LineDraft>>({});
 
@@ -82,9 +83,8 @@ export default function InventoryForm({
         setLoading(true);
         setLoadError(null);
         console.log(requestId);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}`,
                 {
                     headers: {
@@ -94,10 +94,9 @@ export default function InventoryForm({
             );
 
             const response = await res.json();
-
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to load request."
                 );
             }
@@ -111,7 +110,6 @@ export default function InventoryForm({
                 string,
                 LineDraft
             > = {};
-
             for (const line of data.request.lines) {
                 initialDrafts[line.id] = {
                     previousBalance:
@@ -123,7 +121,6 @@ export default function InventoryForm({
                         String(
                             line.currentBalance ?? ""
                         ),
-
                     requestedQty:
                         line.requestedQty === null
                             ? ""
@@ -137,7 +134,6 @@ export default function InventoryForm({
                     saved: false,
                 };
             }
-
             setDrafts(initialDrafts);
         } catch (error) {
             setLoadError(
@@ -148,12 +144,11 @@ export default function InventoryForm({
         } finally {
             setLoading(false);
         }
-    }, [requestId, token]);
+    }, [requestId, token, editorToken]);
 
     useEffect(() => {
         loadRequest();
     }, [loadRequest]);
-
     const updateDraft = (
         lineId: string,
         field: keyof Pick<
@@ -176,7 +171,6 @@ export default function InventoryForm({
 
                 [lineId]: {
                     ...existing,
-
                     [field]: value,
 
                     dirty: true,
@@ -200,7 +194,6 @@ export default function InventoryForm({
 
         const previousBalance =
             Number(draft.previousBalance);
-
         const currentBalance =
             Number(draft.currentBalance);
 
@@ -208,7 +201,6 @@ export default function InventoryForm({
             Number(draft.requestedQty);
 
         let validationError: string | undefined;
-
         if (
             draft.previousBalance === "" ||
             draft.currentBalance === "" ||
@@ -232,7 +224,6 @@ export default function InventoryForm({
             validationError =
                 "Current balance cannot be greater than previous balance.";
         }
-
         if (validationError) {
             setDrafts(current => ({
                 ...current,
@@ -255,9 +246,8 @@ export default function InventoryForm({
                 error: undefined,
             },
         }));
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "PATCH",
@@ -269,7 +259,6 @@ export default function InventoryForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         operation:
                             "RECORD_INVENTORY",
@@ -282,10 +271,9 @@ export default function InventoryForm({
             );
 
             const response = await res.json();
-
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to save inventory."
                 );
             }
@@ -295,7 +283,6 @@ export default function InventoryForm({
 
                 [lineId]: {
                     ...current[lineId],
-
                     saving: false,
                     dirty: false,
                     saved: true,
@@ -312,7 +299,6 @@ export default function InventoryForm({
                     ...current[lineId],
 
                     saving: false,
-
                     error:
                         error instanceof Error
                             ? error.message
@@ -330,7 +316,6 @@ export default function InventoryForm({
         if (!draft) {
             return;
         }
-
         const confirmed = window.confirm(
             `Remove ${productName} from the request?`
         );
@@ -348,9 +333,8 @@ export default function InventoryForm({
                 error: undefined,
             },
         }));
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "DELETE",
@@ -363,10 +347,9 @@ export default function InventoryForm({
             );
 
             const response = await res.json();
-
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to delete line."
                 );
             }
@@ -378,7 +361,6 @@ export default function InventoryForm({
 
                 return {
                     ...current,
-
                     lines: current.lines.filter(
                         line => line.id !== lineId
                     ),
@@ -398,7 +380,6 @@ export default function InventoryForm({
 
                 [lineId]: {
                     ...current[lineId],
-
                     deleting: false,
 
                     error:
@@ -417,7 +398,6 @@ export default function InventoryForm({
 
     const submitInventory = async () => {
         setFormError(null);
-
         if (hasUnsavedChanges) {
             setFormError(
                 "You have unsaved inventory changes. Save them before submitting."
@@ -433,9 +413,8 @@ export default function InventoryForm({
         }
 
         setSubmitting(true);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/transition`,
                 {
                     method: "POST",
@@ -447,7 +426,6 @@ export default function InventoryForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         action: "SUBMIT_INVENTORY",
                     }),
@@ -458,11 +436,10 @@ export default function InventoryForm({
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to submit inventory."
                 );
             }
-
             // The request has now moved to the
             // next workflow state.
             onSaved?.();
@@ -478,7 +455,6 @@ export default function InventoryForm({
             setSubmitting(false);
         }
     };
-
     if (loading) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -488,7 +464,6 @@ export default function InventoryForm({
             </section>
         );
     }
-
     if (loadError || !request) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -496,7 +471,6 @@ export default function InventoryForm({
                     {loadError ??
                         "Request could not be loaded."}
                 </p>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -513,12 +487,10 @@ export default function InventoryForm({
 
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
-
                 <div>
                     <h2 className="text-base font-semibold">
                         Record Inventory
                     </h2>
-
                     <div className="mt-0.5 text-xs text-gray-500">
                         Request: {request.id}
                         {" · "}
@@ -528,7 +500,6 @@ export default function InventoryForm({
                         ).toLocaleDateString()}
                     </div>
                 </div>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -537,7 +508,6 @@ export default function InventoryForm({
                     Close
                 </button>
             </div>
-
             {/* Permission warning */}
             {!capabilities?.canEdit && (
                 <div className="border-b bg-yellow-50 px-4 py-2 text-xs text-yellow-700">
@@ -550,7 +520,6 @@ export default function InventoryForm({
                     {formError}
                 </div>
             )}
-
             {/* Spreadsheet */}
             <div className="max-h-[60vh] overflow-auto mobile-cards">
                 <div className="overflow-x-auto">
@@ -560,7 +529,6 @@ export default function InventoryForm({
                     <thead className="sticky top-0 z-10 bg-gray-100">
 
                         <tr className="border-b">
-
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
                                 Product
                             </th>
@@ -572,7 +540,6 @@ export default function InventoryForm({
                             <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                                 Current
                             </th>
-
                             <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
                                 Requested
                             </th>
@@ -586,7 +553,6 @@ export default function InventoryForm({
                     </thead>
 
                     <tbody>
-
                         {request.lines.map(line => {
                             const draft =
                                 drafts[line.id];
@@ -598,7 +564,6 @@ export default function InventoryForm({
                             const busy =
                                 draft.saving ||
                                 draft.deleting;
-
                             return (
                                 <tr
                                     key={line.id}
@@ -607,7 +572,6 @@ export default function InventoryForm({
 
                                     {/* Product */}
                                     <td data-label="Product" className="px-3 py-1.5">
-
                                         <div className="whitespace-nowrap font-medium">
                                             {
                                                 line
@@ -615,7 +579,6 @@ export default function InventoryForm({
                                                     .displayName
                                             }
                                         </div>
-
                                         <div className="text-[10px] text-gray-400">
                                             {
                                                 line
@@ -625,10 +588,8 @@ export default function InventoryForm({
                                         </div>
 
                                     </td>
-
                                     {/* Previous */}
                                     <td data-label="Previous" className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -648,12 +609,10 @@ export default function InventoryForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Current */}
                                     <td data-label="Current" className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -673,12 +632,10 @@ export default function InventoryForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Requested */}
                                     <td data-label="Requested" className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="1"
@@ -698,14 +655,12 @@ export default function InventoryForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Actions */}
                                     <td data-label="Actions" className="px-3 py-1.5">
 
                                         <div className="flex items-center gap-2 whitespace-nowrap">
-
                                             {draft.saving ? (
                                                 <span className="text-gray-400">
                                                     saving...
@@ -733,11 +688,9 @@ export default function InventoryForm({
                                                     save
                                                 </button>
                                             )}
-
                                             <span className="text-gray-300">
                                                 |
                                             </span>
-
                                             {draft.deleting ? (
                                                 <span className="text-gray-400">
                                                     deleting...
@@ -760,7 +713,6 @@ export default function InventoryForm({
                                                     delete
                                                 </button>
                                             )}
-
                                         </div>
 
                                         {draft.error && (
@@ -774,7 +726,6 @@ export default function InventoryForm({
                                 </tr>
                             );
                         })}
-
                     </tbody>
 
                 </table>
@@ -789,14 +740,12 @@ export default function InventoryForm({
                     {request.lines.length === 1
                         ? ""
                         : "s"}
-
                     {hasUnsavedChanges && (
                         <span className="ml-3 text-amber-600">
                             unsaved changes
                         </span>
                     )}
                 </div>
-
                 <button
                     type="button"
                     onClick={submitInventory}
@@ -811,9 +760,9 @@ export default function InventoryForm({
                         ? "submitting..."
                         : "Submit Inventory"}
                 </button>
-
             </div>
 
         </section>
     );
 }
+

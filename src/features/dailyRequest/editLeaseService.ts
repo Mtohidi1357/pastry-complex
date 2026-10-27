@@ -7,10 +7,11 @@ import { Roles } from "@/lib/constants/roles";
 import { RequestStatus } from "@/generated/prisma/enums";
 import { requestPolicy } from "./requestPolicy";
 
+import { lockRequestRow } from "./withRequestEditLease";
+
 type LeaseAction = "acquire" | "renew" | "release";
 
 const LEASE_DURATION_MS = 120_000;
-
 function conflict(message: string) {
     return new AppError(
         ApiErrorCode.EDIT_LEASE_CONFLICT,
@@ -18,7 +19,6 @@ function conflict(message: string) {
         409,
     );
 }
-
 export async function performLeaseAction(
     requestId: string,
     currentUser: CurrentUser,
@@ -26,24 +26,9 @@ export async function performLeaseAction(
     action: LeaseAction,
 ) {
     return prisma.$transaction(async (tx) => {
-        // Serialize lease operations for this request.
-        // The table name matches DailyRequest's @@map.
-        const rows = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM daily_requests
-            WHERE id = ${requestId}
-            FOR UPDATE
-        `;
-
-        if (rows.length === 0) {
-            throw new AppError(
-                ApiErrorCode.NOT_FOUND,
-                "Request not found.",
-                404,
-            );
-        }
+        await lockRequestRow(tx, requestId);
 
         const now = new Date();
-
         // Release requires ownership of the lease, even if the
         // request has since moved to another user or status.
         if (action === "release") {
@@ -57,7 +42,6 @@ export async function performLeaseAction(
 
             return { released: true };
         }
-
         const request = await tx.dailyRequest.findUnique({
             where: { id: requestId },
         });
@@ -75,7 +59,6 @@ export async function performLeaseAction(
                 "This request is not assigned to you.",
             );
         }
-
         if (
             currentUser.roleCode !== Roles.WM &&
             request.branchId !== currentUser.branchId
@@ -86,7 +69,6 @@ export async function performLeaseAction(
         }
 
         const context = { request, currentUser };
-
         // A workshop manager needs to acquire the lease before
         // transitioning MANAGER_SUBMITTED into production.
         const canStartProduction =
@@ -98,7 +80,6 @@ export async function performLeaseAction(
             requestPolicy.canProduce(context).allowed ||
             requestPolicy.canReceive(context).allowed ||
             canStartProduction;
-
         if (!canEdit) {
             throw new PermissionDeniedError(
                 "This request is not available for editing.",
@@ -112,7 +93,6 @@ export async function performLeaseAction(
         const sameEditor =
             existing?.ownerId === currentUser.id &&
             existing?.token === editorToken;
-
         const isActive =
             existing !== null &&
             existing.expiresAt.getTime() > now.getTime();
@@ -128,11 +108,9 @@ export async function performLeaseAction(
                 "This request is already open in another editor.",
             );
         }
-
         const expiresAt = new Date(
             now.getTime() + LEASE_DURATION_MS,
         );
-
         const lease = await tx.requestEditLease.upsert({
             where: {dailyRequestId: requestId},
             create: {
@@ -147,10 +125,10 @@ export async function performLeaseAction(
                 expiresAt,
             },
         });
-
         return {
             requestId,
             expiresAt: lease.expiresAt,
         };
     });
 }
+

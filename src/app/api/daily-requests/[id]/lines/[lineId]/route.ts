@@ -7,7 +7,6 @@ import { dailyRequestLineService } from "@/features/dailyRequestLine/dailyReques
 import { UpdateLineSchema } from "@/features/dailyRequestLine/dailyRequestLineSchemas";
 import { BusinessError } from "@/errors/BusinessError";
 import { BusinessErrorCode } from "@/types/business";
-
 export async function GET(
     req: NextRequest,
     {
@@ -28,7 +27,6 @@ export async function GET(
                 lineId,
                 currentUser,
             );
-
         return success(result);
     }
     catch (error) {
@@ -51,7 +49,6 @@ export async function GET(
         );
     }
 }
-
 export async function PATCH(
     req: NextRequest,
     {
@@ -60,14 +57,13 @@ export async function PATCH(
         params: Promise<{ id: string, lineId: string }>;
     }
 ) {
-    //Must check requestPolicy.canEdit() or so .... 
+    //Must check requestPolicy.canEdit() or so ....
     try {
         const currentUser = await authenticate(req);
         const { id, lineId } = await params;
         const dto = UpdateLineSchema.parse(
             await req.json()
         );
-
         switch (dto.operation) {
             case "RECORD_PRODUCTION": {
                     if (dto.producedQty === undefined) {
@@ -81,11 +77,10 @@ export async function PATCH(
                         lineId,
                         { producedQty: dto.producedQty },
                         currentUser,
+                        req.headers.get("X-Request-Edit-Token") ?? undefined,
                     );
-
                     return success(result);
             }
-
             case "RECORD_REQUESTEDQTY": {
                 if (dto.requestedQty === undefined) {
                     throw new BusinessError(
@@ -97,12 +92,11 @@ export async function PATCH(
                     id,
                     lineId,
                     { requestedQty: dto.requestedQty },
-                    currentUser
+                    currentUser,
+                    req.headers.get("X-Request-Edit-Token") ?? undefined,
                 );
-
                 return success(result);
             }
-
             case "RECORD_RECEIVEDQTY": {
                 if (dto.receivedQty === undefined) {
                     throw new BusinessError(
@@ -115,13 +109,12 @@ export async function PATCH(
                     lineId,
                     { receivedQty: dto.receivedQty },
                     currentUser,
+                    req.headers.get("X-Request-Edit-Token") ?? undefined,
                 );
-
                 return success(result);
             }
-
             case "RECORD_INVENTORY": {
-                
+
                     if (
                         dto.requestedQty === undefined ||
                         dto.previousBalance === undefined ||
@@ -141,13 +134,13 @@ export async function PATCH(
                             currentBalance: dto.currentBalance
                         },
                         currentUser,
+                        req.headers.get("X-Request-Edit-Token") ?? undefined,
                     );
                     return success(result);
             }
         }
     } catch (error) {
         console.error(error);
-
         if (error instanceof AppError) {
 
             return failure(
@@ -166,7 +159,6 @@ export async function PATCH(
                 error.details
             )
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to update line.",
@@ -188,11 +180,11 @@ export async function DELETE(
         const currentUser = await authenticate(req);
         const { id } = await params;
         const { lineId } = await params;
-
         await dailyRequestLineService.deleteLine(
             id,
             lineId,
             currentUser,
+            req.headers.get("X-Request-Edit-Token") ?? undefined,
         );
 
         return success({
@@ -203,7 +195,7 @@ export async function DELETE(
     } catch (error) {
         console.error(error);
 
-        if (error instanceof AppError) {
+        if (error instanceof AppError || error instanceof BusinessError) {
 
             return failure(
                 error.code,
@@ -212,7 +204,6 @@ export async function DELETE(
                 error.details,
             );
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to delete request line.",
@@ -221,3 +212,4 @@ export async function DELETE(
     }
 
 }
+

@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithEditLease } from "../editLeaseClient";
+
 import { useCallback, useEffect, useState } from "react";
 
 type Product = {
@@ -25,7 +27,6 @@ type RequestCapabilities = {
     canRestore: boolean;
     availableActions: string[];
 };
-
 type ReceivingRequest = {
     id: string;
     businessDate: string;
@@ -44,10 +45,10 @@ type LineDraft = {
     error?: LineError | string;
     warning?: LineWarning;
 };
-
 type ReceivingFormProps = {
     requestId: string;
     token: string;
+    editorToken: string;
     onClose: () => void;
     onSaved?: () => void;
     onSubmitted: () => void;
@@ -57,7 +58,6 @@ enum LineWarning {
     RECEIVEDQTY_LESS_THAN_PRODUCED = "RECEIVEDQTY_LESS_THAN_PRODUCED",
     RECEIVING_ZERO = "RECEIVING_ZERO"
 }
-
 enum LineError {
     RECEIVEDQTY_GREATER_THAN_PRODUCED = "RECEIVEDQTY_GREATER_THAN_PRODUCED",
     RECEIVEDQTY_NOT_SET = "RECEIVEDQTY_NOT_SET",
@@ -68,12 +68,12 @@ enum LineError {
 export default function ReceivingForm({
     requestId,
     token,
+    editorToken,
     onClose,
     onSaved,
 }: ReceivingFormProps) {
     const [request, setRequest] =
         useState<ReceivingRequest | null>(null);
-
     const [capabilities, setCapabilities] =
         useState<RequestCapabilities | null>(null);
 
@@ -87,14 +87,13 @@ export default function ReceivingForm({
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] =
         useState<string | null>(null);
-
     const loadRequest = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
         console.log("load request");
 
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}`,
                 {
                     headers: {
@@ -102,12 +101,11 @@ export default function ReceivingForm({
                     },
                 }
             );
-
             const response = await res.json();
-            
+
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to load request."
                 );
             }
@@ -120,7 +118,6 @@ export default function ReceivingForm({
                 string,
                 LineDraft
             > = {};
-
             for (const line of data.request.lines) {
                 initialDrafts[line.id] = {
                     receivingQty:
@@ -132,14 +129,12 @@ export default function ReceivingForm({
                         String(
                             line.producedQty ?? ""
                         ),
-
                     requestedQty:
                         line.requestedQty === null
                             ? ""
                             : String(
                                 line.requestedQty
                             ),
-
                     dirty: false,
                     saving: false,
                     deleting: false,
@@ -165,8 +160,7 @@ export default function ReceivingForm({
         } finally {
             setLoading(false);
         }
-    }, [requestId, token]);
-
+    }, [requestId, token, editorToken]);
     useEffect(() => {
         loadRequest();
     }, [loadRequest]);
@@ -180,7 +174,7 @@ export default function ReceivingForm({
         >,
         value: string
     ) => {
-        
+
         setDrafts(current => {
             const existing = current[lineId];
             console.log(current[lineId]);
@@ -188,7 +182,6 @@ export default function ReceivingForm({
             if (!existing) {
                 return current;
             }
-
             return {
                 ...current,
 
@@ -196,7 +189,6 @@ export default function ReceivingForm({
                     ...existing,
 
                     [field]: value,
-
                     dirty: true,
                     saved: false,
                     error: setLineError(
@@ -211,7 +203,6 @@ export default function ReceivingForm({
             };
         });
     };
-
     const saveLine = async (lineId: string) => {
         const draft = drafts[lineId];
 
@@ -228,15 +219,13 @@ export default function ReceivingForm({
 
         const requestedQty =
             Number(draft.requestedQty);
-        
-        const receivedQty = 
-            Number(draft.receivingQty);
 
+        const receivedQty =
+            Number(draft.receivingQty);
         let validationError: LineError | undefined;
         let validationWarning: LineWarning | undefined;
-
         if (
-            draft.receivingQty === "" 
+            draft.receivingQty === ""
         ) {
             validationError =
                 LineError.RECEIVEDQTY_NOT_SET;
@@ -260,7 +249,6 @@ export default function ReceivingForm({
         ) {
             validationError = LineError.RECEIVEDQTY_GREATER_THAN_PRODUCED
         }
-
         if (validationError) {
             setDrafts(current => ({
                 ...current,
@@ -277,7 +265,6 @@ export default function ReceivingForm({
         if (validationWarning) {
             setDrafts(current => ({
                 ...current,
-
                 [lineId]: {
                     ...current[lineId],
                     warning: validationWarning
@@ -295,9 +282,8 @@ export default function ReceivingForm({
                 warning: validationWarning ?? undefined,
             },
         }));
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "PATCH",
@@ -309,7 +295,6 @@ export default function ReceivingForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         operation:
                             "RECORD_RECEIVEDQTY",
@@ -318,12 +303,11 @@ export default function ReceivingForm({
                     }),
                 }
             );
-
             const response = await res.json();
             //console.log(response);
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to save Receiving. saveLine fetch"
                 );
             }
@@ -333,7 +317,6 @@ export default function ReceivingForm({
 
                 [lineId]: {
                     ...current[lineId],
-
                     saving: false,
                     dirty: false,
                     saved: true,
@@ -350,7 +333,6 @@ export default function ReceivingForm({
                     ...current[lineId],
 
                     saving: false,
-
                     error:
                         error instanceof Error
                             ? error.message
@@ -359,13 +341,13 @@ export default function ReceivingForm({
             }));
         }
     };
-    
+
     const hasUnsavedChanges =
         Object.values(drafts).some(
             draft => draft.dirty
         );
-    
-    const hasInValidProducedQty = 
+
+    const hasInValidProducedQty =
         Object.values(drafts).some(
             draft => (
                 draft.receivingQty === null ||
@@ -373,7 +355,6 @@ export default function ReceivingForm({
                 draft.receivingQty === ""
             )
         );
-
     const submitReceiving = async () => {
         setFormError(null);
 
@@ -392,9 +373,8 @@ export default function ReceivingForm({
         }
 
         setSubmitting(true);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/transition`,
                 {
                     method: "POST",
@@ -406,7 +386,6 @@ export default function ReceivingForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         action: "CLOSE_REQUEST",
                     }),
@@ -417,11 +396,10 @@ export default function ReceivingForm({
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to submit Receiving."
                 );
             }
-
             // The request has now moved to the
             // next workflow state.
             onSaved?.();
@@ -437,7 +415,6 @@ export default function ReceivingForm({
             setSubmitting(false);
         }
     };
-
     if (loading) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -447,7 +424,6 @@ export default function ReceivingForm({
             </section>
         );
     }
-
     if (loadError || !request) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -455,7 +431,6 @@ export default function ReceivingForm({
                     {loadError ??
                         "Request could not be loaded."}
                 </p>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -468,17 +443,15 @@ export default function ReceivingForm({
     }
     //console.log("R 1");
     return (
-        
+
         <section className="rounded-xl border bg-white shadow">
 
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
-
                 <div>
                     <h2 className="text-base font-semibold">
                         Record Receiving
                     </h2>
-
                     <div className="mt-0.5 text-xs text-gray-500">
                         Request: {request.id}
                         {" · "}
@@ -488,7 +461,6 @@ export default function ReceivingForm({
                         ).toLocaleDateString()}
                     </div>
                 </div>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -497,7 +469,6 @@ export default function ReceivingForm({
                     Close
                 </button>
             </div>
-
             {/* Permission warning */}
             {!capabilities?.canEdit && (
                 <div className="border-b bg-yellow-50 px-4 py-2 text-xs text-yellow-700">
@@ -510,7 +481,6 @@ export default function ReceivingForm({
                     {formError}
                 </div>
             )}
-
             {/* Spreadsheet */}
             <div className="max-h-[60vh] overflow-auto text-gray-500">
 
@@ -519,19 +489,16 @@ export default function ReceivingForm({
                     <thead className="sticky top-0 z-10 bg-gray-100">
 
                         <tr className="border-b">
-
                             <th className="whitespace-nowrap px-3 py-2 align-middle text-left font-medium">
                                 Product
                             </th>
-                           
+
                             <th className="whitespace-nowrap px-2 py-2 align-middle text-left font-medium">
                                 Requested
                             </th>
-                             
                             <th className="whitespace-nowrap px-2 py-2 align-middle text-left font-medium">
                                 Produced
                             </th>
-
                             <th className="whitespace-nowrap px-2 py-2 align-middle text-left font-medium">
                                 Received
                             </th>
@@ -545,7 +512,6 @@ export default function ReceivingForm({
                     </thead>
 
                     <tbody>
-
                         {request.lines.map(line => {
                             const draft =
                                 drafts[line.id];
@@ -553,21 +519,18 @@ export default function ReceivingForm({
                             if (!draft) {
                                 return null;
                             }
-
                             const busy =
                                 draft.saving ||
                                 draft.deleting;
                             //console.log("R 2")
                             return (
-                                
+
                                 <tr
                                     key={line.id}
                                     className="border-b last:border-b-0 hover:bg-gray-50"
                                 >
-
                                     {/* Product */}
                                     <td className="px-3 py-1.5">
-
                                         <div className="whitespace-nowrap font-medium">
                                             {
                                                 line
@@ -575,7 +538,6 @@ export default function ReceivingForm({
                                                     .displayName
                                             }
                                         </div>
-
                                         <div className="text-[10px] text-gray-400">
                                             {
                                                 line
@@ -585,10 +547,8 @@ export default function ReceivingForm({
                                         </div>
 
                                     </td>
-
                                     {/* Requested */}
                                     <td className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="1"
@@ -600,12 +560,10 @@ export default function ReceivingForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Produced */}
                                     <td className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -617,12 +575,10 @@ export default function ReceivingForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Received */}
                                     <td className="px-2 py-1.5">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -641,11 +597,10 @@ export default function ReceivingForm({
                                                     e.target.value
                                                 )
                                             }
-                                                
+
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
 
@@ -653,7 +608,6 @@ export default function ReceivingForm({
                                     <td className="px-3 py-1.5">
 
                                         <div className="flex items-center gap-2 whitespace-nowrap">
-
                                             {draft.saving ? (
                                                 <span className="text-gray-400">
                                                     saving...
@@ -681,15 +635,13 @@ export default function ReceivingForm({
                                                     save
                                                 </button>
                                             )}
-
                                         </div>
-                                           
+
                                             {draft.error && (
                                             <div className="mt-1 max-w-xs text-[10px] text-red-600">
                                                 {draft.error}
                                             </div>
                                         )}
-
                                         {draft.warning && (!draft.error) && (
                                             <div className="mt-1 max-w-xs text-[10px] text-blue-600">
                                                 {draft.warning}
@@ -703,7 +655,6 @@ export default function ReceivingForm({
                         })}
 
                     </tbody>
-
                 </table>
 
             </div>
@@ -716,14 +667,12 @@ export default function ReceivingForm({
                     {request.lines.length === 1
                         ? ""
                         : "s"}
-
                     {hasUnsavedChanges && (
                         <span className="ml-3 text-amber-600">
                             unsaved changes
                         </span>
                     )}
                 </div>
-
                 <button
                     type="button"
                     onClick={submitReceiving}
@@ -739,7 +688,6 @@ export default function ReceivingForm({
                         ? "submitting..."
                         : "Submit Receiving"}
                 </button>
-
             </div>
 
         </section>
@@ -755,7 +703,6 @@ function setLineWarning(
     };
     return undefined
 }
-
 function setLineError(
     receivedQty: number,
     producedQty: number,
@@ -770,3 +717,4 @@ function setLineError(
         return undefined
     }
 }
+

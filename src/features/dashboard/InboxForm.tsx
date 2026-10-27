@@ -1,6 +1,5 @@
 "use client";
-
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RequestCapabilities } from "../requestPolicy/requestCapabilities";
 import { WorkflowAction } from "../workflow/wrokFlowDefinition";
@@ -13,6 +12,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import { Roles } from "@/lib/constants/roles";
 import { LoggedInUser } from "../auth/authTypes";
 import { useStoredValue } from "@/hooks/useStoredValue";
+import RequestEditSession from "../dailyRequest/RequestEditSession";
 
 type InventoryLine = {
     id: string;
@@ -24,7 +24,6 @@ type InventoryLine = {
     currentBalance: number;
     requestedQty: number | null;
 };
-
 type WorkItem = {
     id: string;
     businessDate: string | null;
@@ -46,7 +45,6 @@ type WorkItem = {
     capabilities: RequestCapabilities;
     lines: InventoryLine[]
 };
-
 function formatDate(iso: string | null) {
     if (!iso) return "—";
     return new Date(iso).toLocaleString();
@@ -59,7 +57,6 @@ const STATUS_COLORS: Record<string, string> = {
     MANAGER_SUBMITTED: "bg-red-500/20 text-red-300 border-red-400/30",
     DELETED: "red",
 };
-
 async function fetchInboxData(
     token: string,
     signal?: AbortSignal,
@@ -78,7 +75,6 @@ async function fetchInboxData(
     const response = await res.json();
     return response.data;
 }
-
 export default function InboxForm() {
     // const [token, setToken] = useState("");
     // const [user, setUser] = useState<LoggedInUser | null>(null);
@@ -86,7 +82,6 @@ export default function InboxForm() {
     const storedUser = useStoredValue("user");
 
     let user: LoggedInUser | null = null;
-
     if (storedUser) {
         try {
             user = JSON.parse(storedUser) as LoggedInUser;
@@ -104,9 +99,6 @@ export default function InboxForm() {
     const [selectedRequestId, setSelectedRequestId] =
         useState<string | null>(null);
     const [workFlowAction, setWorkFlowAction] = useState<WorkflowAction | null>(null);
-    const productionOpeningRef = useRef(false);
-    const [openingProductionId, setOpeningProductionId] = useState<string | null>(null);
-
     const router = useRouter();
 
     const handleSubformClose = async () => {
@@ -121,7 +113,6 @@ const loadInbox = async () => {
 
     setLoading(true);
     setError(null);
-
     try {
         const data = await fetchInboxData(token);
         setInbox(data.items);
@@ -140,7 +131,6 @@ const loadInbox = async () => {
 // Initial load: update state in the network completion callbacks.
 useEffect(() => {
     if (!token) return;
-
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -154,7 +144,6 @@ useEffect(() => {
         })
         .catch((err: unknown) => {
             if (signal.aborted) return;
-
             setError(
                 err instanceof Error
                     ? err.message
@@ -166,7 +155,6 @@ useEffect(() => {
                 setLoading(false);
             }
         });
-
     return () => controller.abort();
 }, [token]);
     const handleRequestDetail = async (
@@ -176,83 +164,15 @@ useEffect(() => {
         setSelectedRequestId(requestId);
         setWorkFlowAction(action);
     };
-
-    const handleTransition = async (
-    requestId: string,
-    action: WorkflowAction,
-): Promise<boolean> => {
-    try {
-        const res = await fetch(
-            `/api/daily-requests/${requestId}/transition`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ action }),
-            },
-        );
-
-        const response = await res.json();
-
-        if (!res.ok || !response.success) {
-            throw new Error(
-                response.error?.message ??
-                response.message ??
-                "Transition failed.",
-            );
-        }
-
-        await loadInbox();
-        return true;
-    } catch (err) {
-        setError(
-            err instanceof Error
-                ? err.message
-                : "Transition failed.",
-        );
-
-        return false;
-    }
-};
-
-const handleProductionOpen = async (
-    requestId: string,
-    status: RequestStatus,
-) => {
-    if (productionOpeningRef.current) return;
-
-    productionOpeningRef.current = true;
-    setOpeningProductionId(requestId);
-    setError(null);
-
-    // Close any previously selected subform.
-    setSelectedRequestId(null);
-    setWorkFlowAction(null);
-
-    try {
-        if (status === RequestStatus.MANAGER_SUBMITTED) {
-            const succeeded = await handleTransition(
-                requestId,
-                WorkflowAction.START_PRODUCTION,
-            );
-
-            if (!succeeded) return;
-        } else if (status !== RequestStatus.WORKSHOP_PROCESSING) {
+    const handleProductionOpen = (requestId: string, status: RequestStatus) => {
+        if (status !== RequestStatus.MANAGER_SUBMITTED && status !== RequestStatus.WORKSHOP_PROCESSING) {
             setError("This request is not available for production.");
             return;
         }
-
-        // Open only after the transition succeeds, or when already processing.
+        setError(null);
         setSelectedRequestId(requestId);
         setWorkFlowAction(WorkflowAction.START_PRODUCTION);
-    } finally {
-        productionOpeningRef.current = false;
-        setOpeningProductionId(null);
-    }
-};
-
+    };
     return (
         <div className="w-full max-w-4xl rounded-2xl bg-white/10 backdrop-blur-lg p-8 shadow-2xl border border-white/20">
             <div>
@@ -285,21 +205,19 @@ const handleProductionOpen = async (
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                                 </svg>
                             </button>)}
-
                             <div>
                                 <h1 className="text-2xl font-bold text-gray-900">Your Inbox</h1>
                                 <p className="text-sm text-gray-500">
                                     {inbox.length} entries available
                                 </p>
                             </div>
-
                             {/* Actions in header */}
                             <div className="ml-auto flex items-center gap-2">
                                 {(user && (user.role.code === Roles.ADMIN ||
                                   user.role.code === Roles.INV ||
-                                  user.role.code === Roles.BM  
+                                  user.role.code === Roles.BM
                                 )) &&
-                                 <button 
+                                 <button
                                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
                                     onClick={() => {router.push("/daily-request")}}
                                     >
@@ -309,8 +227,6 @@ const handleProductionOpen = async (
                         </div>
                     </header>
                 </div>
-                
-
                 <p className="mt-2 mb-6 text-center text-slate-300">
                     Work items assigned to you:
                 </p>
@@ -319,7 +235,6 @@ const handleProductionOpen = async (
                 {error && (
                     <p className="mt-4 text-sm text-red-400">{error}</p>
                 )}
-
                 {inbox.length > 0 && (
                     <>
                         <p className="mt-6 mb-3 text-sm text-slate-400">
@@ -346,7 +261,6 @@ const handleProductionOpen = async (
                                             {item.status.replace("_", " ")}
                                         </span>
                                     </div>
-
                                     <dl className="mt-3 grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
                                         <div className="flex justify-between">
                                             <dt className="text-slate-400">Submitted</dt>
@@ -392,21 +306,18 @@ const handleProductionOpen = async (
                                                 Edit
                                             </button>
                                         )}
-
                                         {item.capabilities.canDelete && (
                                             <button type="button"
                                                 className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
                                                 Delete
                                             </button>
                                         )}
-
                                         {item.capabilities.canRestore && (
                                             <button type="button"
                                                 className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
                                                 Restore
                                             </button>
                                         )}
-
                                         {/* SUBMIT_INVENTORY */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.SUBMIT_INVENTORY
@@ -423,7 +334,6 @@ const handleProductionOpen = async (
                                                     Record Inventory
                                                 </button>
                                             )}
-
                                         {/* SUBMIT_MANAGER */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.SUBMIT_MANAGER
@@ -439,7 +349,6 @@ const handleProductionOpen = async (
                                                     Record Requested Qty
                                                 </button>
                                             )}
-
                                         {/* START_PRODUCTION / COMPLETE_PRODUCTION */}
                                         {(item.capabilities.availableActions.includes(
                                             WorkflowAction.START_PRODUCTION
@@ -448,19 +357,16 @@ const handleProductionOpen = async (
                                             )) && (
                                                 <button
                                                     type="button"
-                                                    disabled={openingProductionId !== null}
+                                                    
                                                     className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                                     onClick={() => {
                                                         void handleProductionOpen(item.id, item.status);
                                                     }}
                                                 >
-                                                    {openingProductionId === item.id
-                                                        ? "Opening..."
-                                                        : "Record/Edit Production"}
+                                                    Record/Edit Production
                                                 </button>
                                             )}
 
-                                        
                                         {/* CLOSE_REQUEST */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.CLOSE_REQUEST
@@ -476,7 +382,6 @@ const handleProductionOpen = async (
                                                     Close
                                                 </button>
                                             )}
-
                                         {/* CANCEL_REQUEST */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.CANCEL_REQUEST
@@ -488,13 +393,17 @@ const handleProductionOpen = async (
                                                 </button>
                                             )}
                                     </div>
-
                                     {selectedRequestId === item.id &&
                                         workFlowAction === WorkflowAction.SUBMIT_INVENTORY && (
                                             <div className="mt-2 mb-4">
-                                                <InventoryForm
+                                                <RequestEditSession key={item.id} requestId={item.id} token={token}
+                                                    production={false}
+                                                    onClose={() => { void handleSubformClose(); }}>
+                                                    {editorToken => (
+                                                    <InventoryForm
                                                     requestId={item.id}
                                                     token={token}
+                                                    editorToken={editorToken}
                                                     onClose={() => {
                                                         void handleSubformClose();
                                                     }}
@@ -504,13 +413,20 @@ const handleProductionOpen = async (
                                                         await loadInbox();
                                                     }}
                                                 />
+                                                    )}
+                                                </RequestEditSession>
                                             </div>)}
                                     {selectedRequestId === item.id &&
                                         workFlowAction === WorkflowAction.SUBMIT_MANAGER && (
                                             <div className="mt-2 mb-4">
-                                                <RequestedQuantityForm
+                                                <RequestEditSession key={item.id} requestId={item.id} token={token}
+                                                    production={false}
+                                                    onClose={() => { void handleSubformClose(); }}>
+                                                    {editorToken => (
+                                                    <RequestedQuantityForm
                                                     requestId={item.id}
                                                     token={token}
+                                                    editorToken={editorToken}
                                                     onClose={() => {
                                                         void handleSubformClose();
                                                     }}
@@ -520,13 +436,20 @@ const handleProductionOpen = async (
                                                         await loadInbox();
                                                     }}
                                                 />
+                                                    )}
+                                                </RequestEditSession>
                                             </div>)}
                                     {selectedRequestId === item.id &&
                                         workFlowAction === WorkflowAction.START_PRODUCTION && (
                                             <div className="mt-2 mb-4">
-                                                <ProductionForm
+                                                <RequestEditSession key={item.id} requestId={item.id} token={token}
+                                                    production={true}
+                                                    onClose={() => { void handleSubformClose(); }}>
+                                                    {editorToken => (
+                                                    <ProductionForm
                                                     requestId={item.id}
                                                     token={token}
+                                                    editorToken={editorToken}
                                                     onClose={() => {
                                                         void handleSubformClose();
                                                     }}
@@ -536,13 +459,20 @@ const handleProductionOpen = async (
                                                         await loadInbox();
                                                     }}
                                                 />
+                                                    )}
+                                                </RequestEditSession>
                                             </div>)}
                                     {selectedRequestId === item.id &&
                                         workFlowAction === WorkflowAction.CLOSE_REQUEST && (
                                             <div className="mt-2 mb-4">
-                                                <ReceivingForm
+                                                <RequestEditSession key={item.id} requestId={item.id} token={token}
+                                                    production={false}
+                                                    onClose={() => { void handleSubformClose(); }}>
+                                                    {editorToken => (
+                                                    <ReceivingForm
                                                     requestId={item.id}
                                                     token={token}
+                                                    editorToken={editorToken}
                                                     onClose={() => {
                                                         void handleSubformClose();
                                                     }}
@@ -552,13 +482,14 @@ const handleProductionOpen = async (
                                                         await loadInbox();
                                                     }}
                                                 />
+                                                    )}
+                                                </RequestEditSession>
                                             </div>)}
                                 </li>
                             ))}
                         </ul>
                     </>
                 )}
-
                 {!loading && !error && inbox.length === 0 && (
                     <p className="mt-6 text-center text-sm text-slate-400">
                         Your inbox is empty.
@@ -568,3 +499,4 @@ const handleProductionOpen = async (
         </div>
     );
 }
+

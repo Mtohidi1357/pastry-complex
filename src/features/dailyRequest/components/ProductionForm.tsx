@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithEditLease } from "../editLeaseClient";
+
 import { useCallback, useEffect, useState } from "react";
 
 type Product = {
@@ -24,7 +26,6 @@ type RequestCapabilities = {
     canRestore: boolean;
     availableActions: string[];
 };
-
 type ProductionRequest = {
     id: string;
     businessDate: string;
@@ -46,11 +47,11 @@ type LineDraft = {
 type ProductionFormProps = {
     requestId: string;
     token: string;
+    editorToken: string;
     onClose: () => void;
     onSaved?: () => void;
     onSubmitted: () => void;
 };
-
 enum LineWarning {
     PRODUCESQTY_LESS_THAN_REQUESTED = "PRODUCESQTY_LESS_THAN_REQUESTED",
     PRODUCESQTY_GREATER_THAN_REQUESTED = "PRODUCESQTY_GREATER_THAN_REQUESTED"
@@ -59,6 +60,7 @@ enum LineWarning {
 export default function ProductionForm({
     requestId,
     token,
+    editorToken,
     onClose,
     onSaved,
 }: ProductionFormProps) {
@@ -67,7 +69,6 @@ export default function ProductionForm({
 
     const [capabilities, setCapabilities] =
         useState<RequestCapabilities | null>(null);
-
     const [drafts, setDrafts] =
         useState<Record<string, LineDraft>>({});
 
@@ -83,9 +84,8 @@ export default function ProductionForm({
         setLoading(true);
         setLoadError(null);
         console.log("load request");
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}`,
                 {
                     headers: {
@@ -93,12 +93,11 @@ export default function ProductionForm({
                     },
                 }
             );
-
             const response = await res.json();
-            
+
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to load request."
                 );
             }
@@ -111,7 +110,6 @@ export default function ProductionForm({
                 string,
                 LineDraft
             > = {};
-
             for (const line of data.request.lines) {
                 initialDrafts[line.id] = {
                     producedQty:
@@ -125,7 +123,6 @@ export default function ProductionForm({
                             : String(
                                 line.requestedQty
                             ),
-
                     dirty: false,
                     saving: false,
                     deleting: false,
@@ -153,8 +150,7 @@ export default function ProductionForm({
         } finally {
             setLoading(false);
         }
-    }, [requestId, token]);
-
+    }, [requestId, token, editorToken]);
     useEffect(() => {
         loadRequest();
     }, [loadRequest]);
@@ -168,7 +164,7 @@ export default function ProductionForm({
         >,
         value: string
     ) => {
-        
+
         setDrafts(current => {
             const existing = current[lineId];
             console.log(current[lineId]);
@@ -176,7 +172,6 @@ export default function ProductionForm({
             if (!existing) {
                 return current;
             }
-
             return {
                 ...current,
 
@@ -184,7 +179,6 @@ export default function ProductionForm({
                     ...existing,
 
                     [field]: value,
-
                     dirty: true,
                     saved: false,
                     error: setLineErorr(
@@ -199,7 +193,6 @@ export default function ProductionForm({
             };
         });
     };
-
     const saveLine = async (lineId: string) => {
         const draft = drafts[lineId];
 
@@ -219,7 +212,6 @@ export default function ProductionForm({
 
         let validationError: string | undefined;
         let validationWarning: LineWarning | undefined;
-
         if (
             draft.producedQty === "" ||
             draft.requestedQty === ""
@@ -249,7 +241,6 @@ export default function ProductionForm({
         ) {
             validationWarning = LineWarning.PRODUCESQTY_LESS_THAN_REQUESTED
         }
-
         if (validationError) {
             setDrafts(current => ({
                 ...current,
@@ -266,7 +257,6 @@ export default function ProductionForm({
         if (validationWarning) {
             setDrafts(current => ({
                 ...current,
-
                 [lineId]: {
                     ...current[lineId],
                     warning: validationWarning
@@ -284,9 +274,8 @@ export default function ProductionForm({
                 warning: validationWarning ?? undefined,
             },
         }));
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/lines/${lineId}`,
                 {
                     method: "PATCH",
@@ -298,7 +287,6 @@ export default function ProductionForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         operation:
                             "RECORD_PRODUCTION",
@@ -307,12 +295,11 @@ export default function ProductionForm({
                     }),
                 }
             );
-
             const response = await res.json();
             //console.log(response);
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to save Production. saveLine fetch"
                 );
             }
@@ -322,7 +309,6 @@ export default function ProductionForm({
 
                 [lineId]: {
                     ...current[lineId],
-
                     saving: false,
                     dirty: false,
                     saved: true,
@@ -339,7 +325,6 @@ export default function ProductionForm({
                     ...current[lineId],
 
                     saving: false,
-
                     error:
                         error instanceof Error
                             ? error.message
@@ -348,13 +333,13 @@ export default function ProductionForm({
             }));
         }
     };
-    
+
     const hasUnsavedChanges =
         Object.values(drafts).some(
             draft => draft.dirty
         );
-    
-    const hasInValidProducedQty = 
+
+    const hasInValidProducedQty =
         Object.values(drafts).some(
             draft => (
                 draft.producedQty === null ||
@@ -362,7 +347,6 @@ export default function ProductionForm({
                 draft.producedQty === ""
             )
         );
-
     const submitProduction = async () => {
         setFormError(null);
 
@@ -381,9 +365,8 @@ export default function ProductionForm({
         }
 
         setSubmitting(true);
-
         try {
-            const res = await fetch(
+            const res = await fetchWithEditLease(editorToken,
                 `/api/daily-requests/${requestId}/transition`,
                 {
                     method: "POST",
@@ -395,7 +378,6 @@ export default function ProductionForm({
                         Authorization:
                             `Bearer ${token}`,
                     },
-
                     body: JSON.stringify({
                         action: "COMPLETE_PRODUCTION",
                     }),
@@ -406,11 +388,10 @@ export default function ProductionForm({
 
             if (!res.ok || !response.success) {
                 throw new Error(
-                    response.message ??
+                    response.error?.message ?? response.message ??
                     "Failed to submit Production."
                 );
             }
-
             // The request has now moved to the
             // next workflow state.
             onSaved?.();
@@ -426,7 +407,6 @@ export default function ProductionForm({
             setSubmitting(false);
         }
     };
-
     if (loading) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -436,7 +416,6 @@ export default function ProductionForm({
             </section>
         );
     }
-
     if (loadError || !request) {
         return (
             <section className="rounded-xl border bg-white p-4 shadow">
@@ -444,7 +423,6 @@ export default function ProductionForm({
                     {loadError ??
                         "Request could not be loaded."}
                 </p>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -457,9 +435,8 @@ export default function ProductionForm({
     }
     //console.log("R 1");
     return (
-        
-        <section className="rounded-xl border bg-white text-gray-900 shadow">
 
+        <section className="rounded-xl border bg-white text-gray-900 shadow">
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
 
@@ -467,7 +444,6 @@ export default function ProductionForm({
                     <h2 className="text-base font-semibold">
                         Record Production
                     </h2>
-
                     <div className="mt-0.5 text-xs text-gray-500">
                         Request: {request.id}
                         {" · "}
@@ -477,7 +453,6 @@ export default function ProductionForm({
                         ).toLocaleDateString()}
                     </div>
                 </div>
-
                 <button
                     type="button"
                     onClick={onClose}
@@ -486,7 +461,6 @@ export default function ProductionForm({
                     Close
                 </button>
             </div>
-
             {/* Permission warning */}
             {!capabilities?.canEdit && (
                 <div className="border-b bg-yellow-50 px-4 py-2 text-xs text-yellow-700">
@@ -499,7 +473,6 @@ export default function ProductionForm({
                     {formError}
                 </div>
             )}
-
             {/* Spreadsheet */}
             <div className="max-h-[60vh] overflow-auto text-gray-500">
 
@@ -508,19 +481,16 @@ export default function ProductionForm({
                     <thead className="sticky top-0 z-10 bg-gray-100">
 
                         <tr className="border-b">
-
                             <th className="whitespace-nowrap px-3 py-2 align-middle text-left font-medium">
                                 Product
                             </th>
-                           
+
                             <th className="whitespace-nowrap px-2 py-2 align-middle text-left font-medium">
                                 Requested
                             </th>
-                             
                             <th className="whitespace-nowrap px-2 py-2 align-middle text-left font-medium">
                                 Produced
                             </th>
-
                             <th className="whitespace-nowrap px-3 py-2 align-middle text-left font-medium">
                                 Actions
                             </th>
@@ -530,7 +500,6 @@ export default function ProductionForm({
                     </thead>
 
                     <tbody>
-
                         {request.lines.map(line => {
                             const draft =
                                 drafts[line.id];
@@ -538,21 +507,18 @@ export default function ProductionForm({
                             if (!draft) {
                                 return null;
                             }
-
                             const busy =
                                 draft.saving ||
                                 draft.deleting;
                             //console.log("R 2")
                             return (
-                                
+
                                 <tr
                                     key={line.id}
                                     className="border-b last:border-b-0 hover:bg-gray-50"
                                 >
-
                                     {/* Product */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <div className="whitespace-nowrap font-medium">
                                             {
                                                 line
@@ -560,7 +526,6 @@ export default function ProductionForm({
                                                     .displayName
                                             }
                                         </div>
-
                                         <div className="text-[10px] text-gray-400">
                                             {
                                                 line
@@ -570,10 +535,8 @@ export default function ProductionForm({
                                         </div>
 
                                     </td>
-
                                     {/* Requested */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <input
                                             type="number"
                                             min="1"
@@ -592,12 +555,10 @@ export default function ProductionForm({
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
                                     {/* Produced */}
                                     <td className="h-7 w-20 rounded border border-gray-300 bg-white px-2 text-right text-xs text-gray-900 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-700">
-
                                         <input
                                             type="number"
                                             min="0"
@@ -616,11 +577,10 @@ export default function ProductionForm({
                                                     e.target.value
                                                 )
                                             }
-                                                
+
                                             }
                                             className="h-7 w-20 rounded border px-2 text-right text-xs outline-none focus:border-blue-500"
                                         />
-
                                     </td>
 
 
@@ -628,7 +588,6 @@ export default function ProductionForm({
                                     <td className="px-3 py-1.5">
 
                                         <div className="flex items-center gap-2 whitespace-nowrap">
-
                                             {draft.saving ? (
                                                 <span className="text-gray-400">
                                                     saving...
@@ -656,15 +615,13 @@ export default function ProductionForm({
                                                     save
                                                 </button>
                                             )}
-
                                         </div>
-                                            
+
                                             {draft.error && (
                                             <div className="mt-1 max-w-xs text-[10px] text-red-600">
                                                 {draft.error}
                                             </div>
                                         )}
-
                                         {draft.warning && (!draft.error) && (
                                             <div className="mt-1 max-w-xs text-[10px] text-blue-600">
                                                 {draft.warning}
@@ -677,7 +634,6 @@ export default function ProductionForm({
                         })}
 
                     </tbody>
-
                 </table>
 
             </div>
@@ -690,14 +646,12 @@ export default function ProductionForm({
                     {request.lines.length === 1
                         ? ""
                         : "s"}
-
                     {hasUnsavedChanges && (
                         <span className="ml-3 text-amber-600">
                             unsaved changes
                         </span>
                     )}
                 </div>
-
                 <button
                     type="button"
                     onClick={submitProduction}
@@ -713,7 +667,6 @@ export default function ProductionForm({
                         ? "submitting..."
                         : "Submit Production"}
                 </button>
-
             </div>
 
         </section>
@@ -731,7 +684,6 @@ function setLineWarning(
     };
     return undefined
 }
-
 function setLineErorr(
     producedQty: number,
     requestedQty: number,
@@ -740,3 +692,4 @@ function setLineErorr(
         return "Produced qty must be entered."
     }
 }
+

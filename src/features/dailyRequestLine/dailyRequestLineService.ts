@@ -1,426 +1,167 @@
 import { prisma } from "@/lib/prisma";
-import { CurrentUser } from "../auth/authTypes";
-import { dailyRequestLineRepository } from "./dailyRequestLineRepository";
-import { productRepository } from "@/features/products/productRepository";
-import { requestPolicy } from "../dailyRequest/requestPolicy";
-import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository";
+import type { CurrentUser } from "../auth/authTypes";
+import type { DailyRequestLine, Prisma } from "@/generated/prisma/client";
 import { RequestStatus } from "@/generated/prisma/enums";
-import { ApiErrorCode } from "@/types/api";
-import { DailyRequest, DailyRequestLine, Product } from "@/generated/prisma/client";
 import { AppError } from "@/errors/AppError";
 import { BusinessError } from "@/errors/BusinessError";
-import { BusinessErrorCode } from "@/types/business";
 import { PermissionDeniedError } from "@/errors/PermissionDeniedError";
-import {
-    CreateLineDTO,
-    DailyRequestLineView,
-    RecordInventoryDTO,
-    RecordProductionDTO,
-    RecordReceivingDTO,
-    RecordRequestDTO,
-} from "./dailyRequestLineTypes";
-import { check } from "zod";
+import { ApiErrorCode } from "@/types/api";
+import { BusinessErrorCode } from "@/types/business";
+import { dailyRequestLineRepository } from "./dailyRequestLineRepository";
+import { dailyRequestRepository } from "../dailyRequest/dailyRequestRepository";
+import { productRepository } from "../products/productRepository";
+import { requestPolicy } from "../dailyRequest/requestPolicy";
 import { requireRequestReadAccess } from "../dailyRequest/requestReadAccess";
+import { withRequestEditLease } from "../dailyRequest/withRequestEditLease";
+import type {
+    CreateLineDTO, DailyRequestLineView, RecordInventoryDTO,
+    RecordProductionDTO, RecordReceivingDTO, RecordRequestDTO,
+} from "./dailyRequestLineTypes";
+
+type QuantityPolicy = "canProduce" | "canRequest" | "canReceive";
+
+async function editLine(
+    requestId: string,
+    lineId: string,
+    currentUser: CurrentUser,
+    editorToken: string | undefined,
+    policy: QuantityPolicy,
+    operation: (tx: Prisma.TransactionClient) => Promise<DailyRequestLine | null>,
+) {
+    return withRequestEditLease(requestId, currentUser, editorToken, async (tx) => {
+        const request = await dailyRequestRepository.findById(tx, requestId);
+        if (!request) {
+            throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
+        }
+        const permission = requestPolicy[policy]({ request, currentUser });
+        if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
+        const line = await tx.dailyRequestLine.findFirst({
+            where: { id: lineId, dailyRequestId: requestId },
+        });
+        if (!line) {
+            throw new BusinessError(
+                BusinessErrorCode.LINE_REQUEST_MISMATCH,
+                "Line does not belong to the request.",
+            );
+        }
+        return operation(tx);
+    });
+}
 
 export const dailyRequestLineService = {
     async createLine(
         requestId: string,
-        newLinePayLoad: CreateLineDTO,
-        currentUser: CurrentUser
+        payload: CreateLineDTO,
+        currentUser: CurrentUser,
+        editorToken?: string,
     ) {
-        await ensureProductExists(newLinePayLoad.productId);
-        await ensureProductNotAlreadyInRequest(newLinePayLoad.productId, requestId);
-
-        const request = await loadEditableRequest(requestId);
-
-        const editPolicy = requestPolicy.canEdit({
-            request: request,
-            currentUser
-        });
-
-        if (!editPolicy.allowed) {
-            throw new AppError(
-                ApiErrorCode.PERMISSION_DENIED,
-                "Permission Denied!"
+        return withRequestEditLease(requestId, currentUser, editorToken, async (tx) => {
+            const request = await dailyRequestRepository.findById(tx, requestId);
+            if (!request) throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
+            const permission = requestPolicy.canEdit({ request, currentUser });
+            if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
+            const product = await productRepository.findActiveById(tx, payload.productId);
+            if (!product) {
+                throw new BusinessError(BusinessErrorCode.PRODUCT_NOT_FOUND, "Product is not valid.");
+            }
+            const existing = await dailyRequestLineRepository.existsProductInRequest(
+                tx, payload.productId, requestId,
             );
-        }
-
-        return prisma.$transaction(async (tx) => {
-            const dailyRequestLine = await dailyRequestLineRepository.addLine(
-                tx,
-                {
-                    previousBalance: newLinePayLoad.prevBalance,
-                    currentBalance: newLinePayLoad.currentBalance,
-                    dailyRequest: {
-                        connect: {
-                            id: requestId,
-                        }
-                    },
-                    product: {
-                        connect: {
-                            id: newLinePayLoad.productId,
-                        }
-                    }
-
-                }
-            )
-
-            return dailyRequestLine;
-        })
+            if (existing) {
+                throw new AppError(ApiErrorCode.VALIDATION_ERROR, "The product is already in the request.", 409);
+            }
+            return dailyRequestLineRepository.addLine(tx, {
+                previousBalance: payload.prevBalance,
+                currentBalance: payload.currentBalance,
+                dailyRequest: { connect: { id: requestId } },
+                product: { connect: { id: payload.productId } },
+            });
+        });
     },
 
     async deleteLine(
         requestId: string,
         lineId: string,
         currentUser: CurrentUser,
+        editorToken?: string,
     ): Promise<boolean> {
-
-        //Checking if this is last line remained ...
-        const request = await dailyRequestRepository.findByIdWithLines(prisma, requestId);
-
-        if (!request) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-                "Request not found."
-            )
-        };
-
-        if (request?.lines.length === 1
-            && request.status !== RequestStatus.DRAFT
-        ) {
-            throw new BusinessError(
-                BusinessErrorCode.LAST_LINE_DELETION_NOT_ALLOWED,
-                "Last line for non-Draft requests cannot be deleted."
-            )
-        };
-
-        //CHeck permission to delete through policy ...
-        const policyCheck = requestPolicy.canDelete({
-            request,
-            currentUser,
+        return withRequestEditLease(requestId, currentUser, editorToken, async (tx) => {
+            const request = await dailyRequestRepository.findByIdWithLines(tx, requestId);
+            if (!request) throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
+            const permission = requestPolicy.canDelete({ request, currentUser });
+            if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
+            if (!request.lines.some(line => line.id === lineId)) {
+                throw new BusinessError(BusinessErrorCode.LINE_REQUEST_MISMATCH, "Line does not belong to the request.");
+            }
+            if (request.lines.length === 1 && request.status !== RequestStatus.DRAFT) {
+                throw new BusinessError(
+                    BusinessErrorCode.LAST_LINE_DELETION_NOT_ALLOWED,
+                    "Last line for non-Draft requests cannot be deleted.",
+                );
+            }
+            return dailyRequestLineRepository.removeLine(tx, requestId, lineId);
         });
-
-        if (!policyCheck.allowed) {
-            throw new AppError(
-                ApiErrorCode.PERMISSION_DENIED,
-                "Permission denied."
-            )
-        }
-
-        //Delete line ...
-        const deleteResult: boolean =
-            await dailyRequestLineRepository.removeLine(
-                prisma,
-                requestId,
-                lineId
-            );
-        return deleteResult;
     },
 
-    async getLine(
-        requestId: string,
-        lineId: string,
-        currentUser: CurrentUser,
-    ) {
+    async getLine(requestId: string, lineId: string, currentUser: CurrentUser) {
         await requireRequestReadAccess(requestId, currentUser);
-
         const line = await prisma.dailyRequestLine.findFirst({
-            where : {
-                id: lineId,
-                dailyRequestId: requestId,
-            },
+            where: { id: lineId, dailyRequestId: requestId },
         });
-
-        if (!line) {
-            throw new AppError(
-                ApiErrorCode.NOT_FOUND,
-                "Request line not found.",
-                404,
-            );
-        }
-        
+        if (!line) throw new AppError(ApiErrorCode.NOT_FOUND, "Request line not found.", 404);
         return line;
     },
 
     async recordProduction(
-        requestId: string,
-        lineId: string,
-        prodLinePayload: RecordProductionDTO,
-        currentUser: CurrentUser,
-    ): Promise<DailyRequestLine | null> {
-        const request = await dailyRequestRepository.findById(
-            prisma,
-            requestId,
-        );
-
-        if (!request) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-                "Request not found."
-            );
-        };
-
-        const policyCheck = requestPolicy.canProduce({
-            request: request,
-            currentUser,
-        });
-
-        if (!policyCheck.allowed) {
-            throw new PermissionDeniedError(
-                policyCheck.reason
-            )
-        }
-        await ensureLineBelongsToRequest(requestId, lineId);
-
-        const dailyRequestLine =
-            await dailyRequestLineRepository.updateProdQuantity(
-                prisma,
-                requestId,
-                lineId,
-                prodLinePayload,
-
-            );
-
-        return dailyRequestLine;
-
+        requestId: string, lineId: string, payload: RecordProductionDTO,
+        currentUser: CurrentUser, editorToken?: string,
+    ) {
+        return editLine(requestId, lineId, currentUser, editorToken, "canProduce", tx =>
+            dailyRequestLineRepository.updateProdQuantity(tx, requestId, lineId, payload));
     },
 
     async recordRequestQty(
-        requestId: string,
-        lineId: string,
-        requestLinePayLoad: RecordRequestDTO,
-        currentUser: CurrentUser,
-    ): Promise<DailyRequestLine | null> {
-        const request = await dailyRequestRepository.findById(
-            prisma,
-            requestId,
-        );
-
-        if (!request) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-                "Request not found."
-            );
-        };
-
-        const policyCheck = requestPolicy.canRequest({
-            request: request,
-            currentUser,
-        });
-
-        if (!policyCheck.allowed) {
-            throw new PermissionDeniedError(
-                policyCheck.reason
-            )
-        }
-        await ensureLineBelongsToRequest(requestId, lineId);
-
-        const dailyRequestLine =
-            await dailyRequestLineRepository.updateRequestQuantity(
-                prisma,
-                requestId,
-                lineId,
-                requestLinePayLoad,
-            );
-
-        return dailyRequestLine;
-
+        requestId: string, lineId: string, payload: RecordRequestDTO,
+        currentUser: CurrentUser, editorToken?: string,
+    ) {
+        return editLine(requestId, lineId, currentUser, editorToken, "canRequest", tx =>
+            dailyRequestLineRepository.updateRequestQuantity(tx, requestId, lineId, payload));
     },
 
     async recordInventory(
-        requestId: string,
-        lineId: string,
-        inventoryLinePayload: RecordInventoryDTO,
-        currentUser: CurrentUser,
-    ): Promise<DailyRequestLine | null> {
-        const request = await dailyRequestRepository.findByIdWithLines(
-            prisma,
-            requestId,
-        );
-
-        if (!request) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-                "Request not found."
-            );
-        };
-
-        if (!request.lines.some(line => line.id === lineId)) {
-            throw new BusinessError(
-                BusinessErrorCode.LINE_REQUEST_MISMATCH,
-                "Line does not belong to the request."
-            )
-        };
-
-        const policyCheck = requestPolicy.canRequest({
-            request: request,
-            currentUser,
+        requestId: string, lineId: string, payload: RecordInventoryDTO,
+        currentUser: CurrentUser, editorToken?: string,
+    ) {
+        return editLine(requestId, lineId, currentUser, editorToken, "canRequest", async tx => {
+            if (payload.requestedQty === 0) {
+                throw new BusinessError(BusinessErrorCode.ZERO_QTY_REQUEST_NOT_ALLOWED, "You must provide a non-zero value for request.");
+            }
+            if (payload.currentBalance > payload.previousBalance) {
+                throw new BusinessError(BusinessErrorCode.FAULTY_BALANCE, "Current balance must be less than or equal to previous balance.");
+            }
+            return dailyRequestLineRepository.updateInventoryQuantity(tx, requestId, lineId, payload);
         });
-
-        if (!policyCheck.allowed) {
-            throw new PermissionDeniedError(
-                policyCheck.reason
-            )
-        };
-
-        if (inventoryLinePayload.requestedQty === 0) {
-            throw new BusinessError(
-                BusinessErrorCode.ZERO_QTY_REQUEST_NOT_ALLOWED,
-                "You must provide a non-zero value for request."
-            )
-        };
-
-        if (
-            inventoryLinePayload.currentBalance > inventoryLinePayload.previousBalance
-        ) {
-            throw new BusinessError(
-                BusinessErrorCode.FAULTY_BALANCE,
-                "Current balance must be less thanor equal to previous balance."
-            )
-        };
-
-        const dailyRequestLine =
-            await dailyRequestLineRepository.updateInventoryQuantity(
-                prisma,
-                requestId,
-                lineId,
-                inventoryLinePayload,
-            );
-
-        return dailyRequestLine;
     },
 
     async recordReceiving(
-        requestId: string,
-        lineId: string,
-        receivingLinePayload: RecordReceivingDTO,
-        currentUser: CurrentUser,
-    ): Promise<DailyRequestLine | null> {
-        const request = await dailyRequestRepository.findById(
-            prisma,
-            requestId,
-        );
-
-        if (!request) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-                "Request not found."
-            );
-        };
-
-        const policyCheck = requestPolicy.canReceive({
-            request: request,
-            currentUser,
-        });
-
-        if (!policyCheck.allowed) {
-            throw new Error(
-                policyCheck.reason
-            )
-        }
-        await ensureLineBelongsToRequest(requestId, lineId);
-
-        const dailyRequestLine =
-            await dailyRequestLineRepository.updateRecivingQuantity(
-                prisma,
-                requestId,
-                lineId,
-                { receivedQty: receivingLinePayload.receivedQty },
-            );
-
-        return dailyRequestLine;
+        requestId: string, lineId: string, payload: RecordReceivingDTO,
+        currentUser: CurrentUser, editorToken?: string,
+    ) {
+        return editLine(requestId, lineId, currentUser, editorToken, "canReceive", tx =>
+            dailyRequestLineRepository.updateRecivingQuantity(tx, requestId, lineId, payload));
     },
 
-    async getLineView(
-        lineId: string,
-    ): Promise<DailyRequestLineView> {
-        const requestLine = await dailyRequestLineRepository.findById(
-            prisma,
-            lineId
-        );
-
-        if (!requestLine) {
-            throw new BusinessError(
-                BusinessErrorCode.REQUEST_LINE_NOT_FOUND_ERROR,
-                `Request line not found ${lineId}`,
-            )
+    async getLineView(lineId: string): Promise<DailyRequestLineView> {
+        const line = await dailyRequestLineRepository.findById(prisma, lineId);
+        if (!line) {
+            throw new BusinessError(BusinessErrorCode.REQUEST_LINE_NOT_FOUND_ERROR, `Request line not found ${lineId}`);
         }
-        const checkedLine = {
-            ...requestLine,
-            requestedQty: requestLine.requestedQty ?? 0,
-            producedQty: requestLine.producedQty ?? 0,
-        }
-        const variance = checkedLine.requestedQty - checkedLine.producedQty;
         return {
             id: lineId,
-            productId: requestLine.productId!,
-            requestedQty: checkedLine.requestedQty,
-            producedQty: checkedLine.producedQty,
-            variance,
-        }
+            productId: line.productId,
+            requestedQty: line.requestedQty ?? 0,
+            producedQty: line.producedQty ?? 0,
+            variance: (line.requestedQty ?? 0) - (line.producedQty ?? 0),
+        };
     },
-}
-
-async function loadEditableRequest(
-    requestId: string
-): Promise<DailyRequest> {
-    const request = await dailyRequestRepository.findById(
-        prisma,
-        requestId
-    );
-
-    if (!request) {
-        throw new BusinessError(
-            BusinessErrorCode.REQUEST_NOT_FOUND_ERROR,
-            "Request not found."
-        );
-    };
-
-    return request;
-
-}
-
-async function ensureLineBelongsToRequest(requestId: string, lineId: string) {
-    const line = await dailyRequestLineRepository.findById(prisma, lineId);
-    if (!line || line.dailyRequestId !== requestId) {
-        throw new BusinessError(
-            BusinessErrorCode.LINE_REQUEST_MISMATCH,
-            "Line does not belong to the request.",
-        );
-    }
-}
-
-async function ensureProductExists(
-    productId: string
-): Promise<Product> {
-    const product = await productRepository.findActiveById(
-        prisma,
-        productId,
-    );
-
-    if (!product) {
-        throw new BusinessError(
-            BusinessErrorCode.PRODUCT_NOT_FOUND,
-            "Product is not valid.",
-        );
-    }
-
-    return product;
-}
-
-async function ensureProductNotAlreadyInRequest(
-    productId: string,
-    requestId: string,
-): Promise<void> {
-    const existing = await dailyRequestLineRepository.existsProductInRequest(
-        prisma,
-        productId,
-        requestId,
-    );
-
-    if (existing) {
-        throw new Error(
-            "The product is already in request."
-        );
-    }
-}
+};

@@ -3,7 +3,6 @@ import { } from "@/generated/prisma/models";
 import { WorkflowAction, WorkflowDelegations } from "./wrokFlowDefinition";
 import { branchRepository } from "../branches/branchRepo";
 import { prisma } from "@/lib/prisma";
-
 export const WorkflowTransitions: Record<
     RequestStatus,
     RequestStatus[]
@@ -23,7 +22,6 @@ export const WorkflowTransitions: Record<
     [RequestStatus.MANAGER_SUBMITTED]: [
         RequestStatus.WORKSHOP_PROCESSING,
     ],
-
     [RequestStatus.WORKSHOP_PROCESSING]: [
         RequestStatus.COMPLETED,
     ],
@@ -38,7 +36,6 @@ export const WorkflowTransitions: Record<
 
     //[RequestStatus.DELETED]: [],
 } as const;
-
 export const transitionActions = [
     WorkflowAction.SUBMIT_INVENTORY,
     WorkflowAction.SUBMIT_MANAGER,
@@ -57,7 +54,6 @@ export const ActionTargetStatus: Partial<Record<
 
     [WorkflowAction.SUBMIT_INVENTORY]:
         RequestStatus.INVENTORY_SUBMITTED,
-
     [WorkflowAction.SUBMIT_MANAGER]:
         RequestStatus.MANAGER_SUBMITTED,
 
@@ -74,7 +70,6 @@ export const ActionTargetStatus: Partial<Record<
         RequestStatus.CANCELLED,
 
 };
-
 export function validTransition(
     from: RequestStatus,
     to: RequestStatus
@@ -88,15 +83,17 @@ export function getTargetStatus(
     return ActionTargetStatus[action];
 }
 
+import type { DbClient } from "@/repositories/types";
+
 export async function getTargetUser(
     branchId: string,
-    action: WorkflowAction
-){  
+    action: WorkflowAction,
+    db: DbClient = prisma,
+){
     const branchCode = await branchRepository.getCodeByID(
-        prisma,
+        db,
         branchId
     )
-
     if(!branchCode){
         throw new Error(
             "Branch not identified."
@@ -105,3 +102,4 @@ export async function getTargetUser(
 
     return WorkflowDelegations[action]?.targetUsers[branchCode];
 }
+

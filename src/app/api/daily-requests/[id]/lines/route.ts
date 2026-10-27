@@ -8,7 +8,6 @@ import { CreateLineSchema } from "@/features/dailyRequestLine/dailyRequestLineSc
 import { dailyRequestLineService } from "@/features/dailyRequestLine/dailyRequestLineService";
 import { BusinessError } from "@/errors/BusinessError";
 import { fail } from "assert";
-
 export async function POST(
     req: NextRequest,
     {
@@ -28,9 +27,9 @@ export async function POST(
         await dailyRequestLineService.createLine(
             id,
             dto,
-            currentUser
+            currentUser,
+            req.headers.get("X-Request-Edit-Token") ?? undefined,
         );
-
         return success(
             {
                 message:
@@ -52,7 +51,6 @@ export async function POST(
         }
 
         if (error instanceof AppError) {
-
             return failure(
                 error.code,
                 error.message,
@@ -62,7 +60,7 @@ export async function POST(
         }
 
         if(error instanceof BusinessError) {
-            
+
             return failure(
                 error.code,
                 error.message,
@@ -70,7 +68,6 @@ export async function POST(
                 error.details
             )
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to create daily request.",
@@ -79,3 +76,4 @@ export async function POST(
     }
 
 }
+

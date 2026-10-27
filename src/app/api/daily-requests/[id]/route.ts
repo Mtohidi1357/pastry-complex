@@ -5,7 +5,6 @@ import { dailyRequestService } from "@/features/dailyRequest/dailyRequestService
 import { AppError } from "@/errors/AppError";
 import { authenticate } from "@/features/auth/authMiddleware";
 import { BusinessError } from "@/errors/BusinessError";
-
 export async function DELETE(
     req: NextRequest,
     {
@@ -20,6 +19,7 @@ export async function DELETE(
         await dailyRequestService.softDeleteReq(
             id,
             currentUser,
+            req.headers.get("X-Request-Edit-Token") ?? undefined,
         );
 
         return success({
@@ -29,7 +29,6 @@ export async function DELETE(
 
     } catch (error) {
         console.error(error);
-
         if (error instanceof AppError) {
 
             return failure(
@@ -49,7 +48,6 @@ export async function DELETE(
                 error.details
             )
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to retrieve daily request.",
@@ -71,7 +69,6 @@ export async function GET(
             await authenticate(req);
         const { id } = await params;
 
-
         const result =
             await dailyRequestService.getRequestWithCapabilities(
                 id,
@@ -92,7 +89,6 @@ export async function GET(
                 error.details,
             );
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to retrieve daily request.",
