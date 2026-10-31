@@ -1,4 +1,5 @@
-import { DbClient } from "../../repositories/types";
+import type { RequestReadScope } from "../dailyRequest/requestReadScope";
+import type { DbClient } from "../../repositories/types";
 
 export const workflowHistoryRepository = {
 
@@ -14,7 +15,6 @@ export const workflowHistoryRepository = {
             orderBy: {
                 changedAt: "asc",
             },
-
             include: {
                 user: {
                     select: {
@@ -27,17 +27,18 @@ export const workflowHistoryRepository = {
     },
 
     async getRecent(
-        db:DbClient
+        db: DbClient,
+        scope: RequestReadScope,
     ){
         return await db.workflowHistory.findMany({
             where:{
+                dailyRequest: { is: scope },
                 changedAt: {
                     gte: new Date(Date.now() - 5 * 60 * 60 * 24 * 1000),
                 }
             },
-
             include: {
-                user: true,
+                user: { select: { id: true, username: true } },
             },
 
             orderBy: {
@@ -49,3 +50,4 @@ export const workflowHistoryRepository = {
     },
 
 };
+

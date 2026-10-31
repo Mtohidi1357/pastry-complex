@@ -9,11 +9,10 @@ import ProductionForm from "../dailyRequest/components/ProductionForm";
 import { RequestStatus } from "@/generated/prisma/enums";
 import ReceivingForm from "../dailyRequest/components/ReceivingForm";
 import Sidebar from "@/components/layout/Sidebar";
-import { Roles } from "@/lib/constants/roles";
+import { canCreateRequests } from "../dailyRequest/requestCreationPolicy";
 import { LoggedInUser } from "../auth/authTypes";
 import { useStoredValue } from "@/hooks/useStoredValue";
 import RequestEditSession from "../dailyRequest/RequestEditSession";
-
 type InventoryLine = {
     id: string;
     product: {
@@ -49,7 +48,6 @@ function formatDate(iso: string | null) {
     if (!iso) return "—";
     return new Date(iso).toLocaleString();
 }
-
 const STATUS_COLORS: Record<string, string> = {
     WORKSHOP_PROCESSING: "bg-amber-500/20 text-amber-300 border-amber-400/30",
     DRAFT: "bg-emerald-500/20 text-emerald-300 border-emerald-400/30",
@@ -67,7 +65,6 @@ async function fetchInboxData(
         },
         signal,
     });
-
     if(!res.ok) {
         throw new Error("Failed to load inbox.")
     }
@@ -80,7 +77,6 @@ export default function InboxForm() {
     // const [user, setUser] = useState<LoggedInUser | null>(null);
     const token = useStoredValue("token") ?? "";
     const storedUser = useStoredValue("user");
-
     let user: LoggedInUser | null = null;
     if (storedUser) {
         try {
@@ -100,7 +96,6 @@ export default function InboxForm() {
         useState<string | null>(null);
     const [workFlowAction, setWorkFlowAction] = useState<WorkflowAction | null>(null);
     const router = useRouter();
-
     const handleSubformClose = async () => {
         setSelectedRequestId(null);
         setWorkFlowAction(null);
@@ -110,7 +105,6 @@ export default function InboxForm() {
 // Refresh after a button click or workflow action.
 const loadInbox = async () => {
     if (!token) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -127,7 +121,6 @@ const loadInbox = async () => {
         setLoading(false);
     }
 };
-
 // Initial load: update state in the network completion callbacks.
 useEffect(() => {
     if (!token) return;
@@ -137,7 +130,6 @@ useEffect(() => {
     fetchInboxData(token, signal)
         .then((data) => {
             if (signal.aborted) return;
-
             setInbox(data.items);
             setTotalItems(data.totalItems);
             setError(null);
@@ -213,15 +205,12 @@ useEffect(() => {
                             </div>
                             {/* Actions in header */}
                             <div className="ml-auto flex items-center gap-2">
-                                {(user && (user.role.code === Roles.ADMIN ||
-                                  user.role.code === Roles.INV ||
-                                  user.role.code === Roles.BM
-                                )) &&
+                                {canCreateRequests(user?.role?.code) &&
                                  <button
                                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
                                     onClick={() => {router.push("/daily-request")}}
                                     >
-                                    + New Entry
+                                    + New Request
                                 </button>}
                             </div>
                         </div>
@@ -230,7 +219,6 @@ useEffect(() => {
                 <p className="mt-2 mb-6 text-center text-slate-300">
                     Work items assigned to you:
                 </p>
-
 
                 {error && (
                     <p className="mt-4 text-sm text-red-400">{error}</p>
@@ -357,7 +345,7 @@ useEffect(() => {
                                             )) && (
                                                 <button
                                                     type="button"
-                                                    
+
                                                     className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                                     onClick={() => {
                                                         void handleProductionOpen(item.id, item.status);
@@ -366,7 +354,6 @@ useEffect(() => {
                                                     Record/Edit Production
                                                 </button>
                                             )}
-
                                         {/* CLOSE_REQUEST */}
                                         {item.capabilities.availableActions.includes(
                                             WorkflowAction.CLOSE_REQUEST

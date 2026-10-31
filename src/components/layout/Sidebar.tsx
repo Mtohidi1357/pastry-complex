@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
 import { notifyAuthChange, useStoredValue } from "@/hooks/useStoredValue";
 
+import { canCreateRequests } from "@/features/dailyRequest/requestCreationPolicy";
+
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,7 +20,6 @@ interface TokenPayload {
   //picture?: string;
   //email?: string;
 }
-
 function getAvatarUrl(userName?: string) {
   const seed = encodeURIComponent(userName || "user");
 
@@ -29,9 +30,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   // const [user, setUser] = useState<TokenPayload | null>(null);
-  const [expanded, setExpanded] = useState(false); // desktop: full vs icon-only  
+  const [expanded, setExpanded] = useState(false); // desktop: full vs icon-only
   const [isMobile, setIsMobile] = useState(false);
-
   const token = useStoredValue("token");
       // localStorage.getItem("token") ||
       // document.cookie
@@ -46,7 +46,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           username: string;
           roleCode: string;
         }>(token);
-
          user = {
           userName: decoded.username,
           roleCode: decoded.roleCode,
@@ -64,15 +63,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
   // useEffect(() => {
-    
+
   //       // setUser({
   //       //   userName: decoded.username,
   //       //   roleCode: decoded.roleCode
   //       // });
   //       //console.log(jwtDecode(token));
-       
+
   // }, []);
 
   const handleLogout = () => {
@@ -82,7 +80,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     notifyAuthChange();
     router.push("/login");
   };
-
   // Navigation links
   const navLinks = [
     { href: "/dashboard/inbox", label: "Inbox", icon: "📥" },
@@ -93,7 +90,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { href: "/dashboard/archive", label: "Archive", icon: "🗄️" },
     { href: "/dashboard/trash", label: "Trash", icon: "🗑️" },
   ];
-
   // Action buttons (not navigation links)
   const actionButtons = [
     { label: "Refresh", icon: "🔄", action: () => window.location.reload() },
@@ -102,7 +98,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   ];
 
   const isActive = (href: string) => pathname === href;
-
   //Determine sidebar width and position
   const sidebarWidth = expanded ? "w-75" : "w-20";
   const sidebarPosition = isMobile
@@ -117,27 +112,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           onClick={onClose}
         />
       )}
-
       <aside
-        className={`  
-          fixed inset-y-0 left-0 z-50 bg-white shadow-xl  
+        className={`
+          fixed inset-y-0 left-0 z-50 bg-white shadow-xl
           flex flex-col transition-all duration-300 ease-in-out
-          overflow-hidden 
+          overflow-hidden
           max-w-full
-          ${sidebarWidth} ${sidebarPosition}  
+          ${sidebarWidth} ${sidebarPosition}
         `}
       >
         {/* ===== SIDEBAR HEADER / TOGGLE BUTTON ===== */}
         <div
-          className={`  
-            flex items-center h-16 shrink-0 border-b border-gray-200  
-            ${expanded ? "justify-between px-4" : "justify-center"}  
+          className={`
+            flex items-center h-16 shrink-0 border-b border-gray-200
+            ${expanded ? "justify-between px-4" : "justify-center"}
           `}
         >
           {expanded && (
             <span className="text-lg font-bold text-gray-800">Dashboard</span>
           )}
-
           {/* Collapse/Expand toggle button */}
           <button
             onClick={() => {
@@ -208,7 +201,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           </div>
         </div>
-
         {/* ===== NAVIGATION LINKS ===== */}
         <nav className={`flex-1 overflow-y-auto overflow-x-hidden ${expanded ? "px-4" : "px-2"} py-5 space-y-1`}>
           {expanded && <p className="px-3 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -230,7 +222,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               `}
             >
               <span className="text-lg shrink-0">{link.icon}</span>
-
               {/* Label - fade out when collapsed, fade in when expanded */}
               <span
                 className={`
@@ -242,7 +233,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </span>
             </Link>
           ))}
-
           {/* ===== ACTION BUTTONS ===== */}
           {expanded && (<p className="px-3 pt-5 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Actions
@@ -251,11 +241,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               key={btn.label}
               onClick={btn.action}
-              className={`w-full flex items-center 
-                ${expanded ? "px-3 py-2.5 justify-start" : "px-2 py-2.5 justify-center"} 
+              className={`w-full flex items-center
+                ${expanded ? "px-3 py-2.5 justify-start" : "px-2 py-2.5 justify-center"}
                 whitespace-nowrap
-                rounded-lg text-sm font-medium text-gray-700 
-                hover:bg-indigo-50 hover:text-indigo-600 
+                rounded-lg text-sm font-medium text-gray-700
+                hover:bg-indigo-50 hover:text-indigo-600
                 transition-colors`}
             >
               <span className="shrink-0 text-lg">{btn.icon}</span>
@@ -268,28 +258,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </span>
             </button>
           ))}
-
           {/* Compose - prominent action button */}
-          <div className={expanded ? "mt-4" : "mt-4 flex justify-center"}>
+          {canCreateRequests(user?.roleCode) && (<div className={expanded ? "mt-4" : "mt-4 flex justify-center"}>
             <button
-              onClick={() => router.push("/dashboard/compose")}
-              className={`w-full mt-4 bg-indigo-600 
-              hover:bg-indigo-700 text-white 
-              font-semibold 
-              ${expanded ? "w-full py-3 px-4" : "w-11 h-11 items-center justify-center"} 
+              onClick={() => { onClose(); router.push("/daily-request"); }}
+              className={`w-full mt-4 bg-indigo-600
+              hover:bg-indigo-700 text-white
+              font-semibold
+              ${expanded ? "w-full py-3 px-4" : "w-11 h-11 items-center justify-center"}
               rounded-xl shadow-md transition-all`}
-              title="Compose New"
+              title="New Request"
             >
               {expanded ? (
-                <>✏️ Compose New</>) :
+                <>✏️ New Request</>) :
                 (
                   <span className="text-lg">✏️</span>
                 )}
             </button>
-          </div>
-
+          </div>)}
         </nav>
-
         {/* ===== LOGOUT AT BOTTOM ===== */}
         <div className={`
             shrink-0 border-t border-gray-200
@@ -320,3 +307,4 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     </>
   );
 }
+

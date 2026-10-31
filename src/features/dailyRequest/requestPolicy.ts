@@ -114,8 +114,10 @@ export const requestPolicy = {
 
         //Creator may edit own draft ...
         if (
-            request.createdById === currentUser.id &&
-            request.status === RequestStatus.DRAFT
+            request.branchId === currentUser.branchId &&
+            request.assignedToId === currentUser.id &&
+            request.status === RequestStatus.DRAFT &&
+            currentUser.roleCode === Roles.INV
         ) {
             return {
                 allowed: true,

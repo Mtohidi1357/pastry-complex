@@ -1,19 +1,19 @@
-"use client";
-import { useRouter } from "next/navigation";
-import CreateNewRequestForm from "@/features/dailyRequest/DailyRequestForm";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { verifyToken } from "@/features/auth/jwt";
+import { canCreateRequests } from "@/features/dailyRequest/requestCreationPolicy";
+import NewRequestPageClient from "@/features/dailyRequest/NewRequestPageClient";
+import type { JwtPayload } from "@/features/auth/authTypes";
 
-export default function NewDailyRequestPage(
-  // businessDate: Date,
-  // branchId: string
-) {
-  const router = useRouter();
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700">
-      <CreateNewRequestForm
-          initBusinessDate={new Date()}
-          initBranchId=""
-          onClose={() => router.push("/dashboard/inbox")} 
-          onSubmitted={() => {}}/>
-    </main>
-  );
+export default async function NewDailyRequestPage() {
+    const token = (await cookies()).get("token")?.value;
+    if (!token) redirect("/login");
+    let user: JwtPayload;
+    try {
+        user = verifyToken(token);
+    } catch {
+        redirect("/login");
+    }
+    if (!canCreateRequests(user.roleCode)) redirect("/dashboard/inbox");
+    return <NewRequestPageClient initialBusinessDate={new Date()} />;
 }

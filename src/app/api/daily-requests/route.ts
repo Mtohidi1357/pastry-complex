@@ -1,4 +1,5 @@
-import { NextRequest } from "next/server";
+import { authenticatedRead } from "@/lib/authenticatedRead";
+import type { NextRequest } from "next/server";
 import { success, failure } from "@/lib/centralResponse";
 import { ApiErrorCode } from "@/types/api";
 import { dailyRequestService } from "@/features/dailyRequest/dailyRequestService";
@@ -8,50 +9,17 @@ import { AppError } from "@/errors/AppError";
 import { authenticate } from "@/features/auth/authMiddleware";
 import { DailyRequestQuerySchema } from "@/validation/dailyRequestQuerySchema";
 import { BusinessError } from "@/errors/BusinessError";
-
 export async function GET(req: NextRequest) {
-    try {
-        const currentUser = await authenticate(req);
-        
-        const searchParams =
-            req.nextUrl.searchParams;
-
-        const query = 
-            DailyRequestQuerySchema.parse({
-                page: searchParams.get("page") ?? undefined,
-                pageSize: searchParams.get("pageSize") ?? undefined,
-                status: searchParams.get("status") ?? undefined,
-                branchId: searchParams.get("branchId") ?? undefined,
-                createdById: searchParams.get("createdById") ?? undefined,
-                sort: searchParams.get("sort") ?? undefined,
-                order: searchParams.get("order") ?? undefined,
-                search: searchParams.get("search") ?? undefined,
-                completedAt: searchParams.get("completedAt") ?? undefined,
-                assinedToId: searchParams.get("assignedToId") ?? undefined,
-            });
-
-        const requests =
-            await dailyRequestService.list(
-                query,
-            );
-
-        return success(requests);
-    } catch (error) {
-        console.error(error);
-
-        return failure(
-            ApiErrorCode.DATABASE_ERROR,
-            "Failed to load daily requests.",
-            500
-        );
-    }
+    return authenticatedRead(req, user => {
+        const query = DailyRequestQuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+        return dailyRequestService.list(query, user);
+    });
 }
-
 export async function POST(req: NextRequest) {
     try {
         //console.log(req);
+        const currentUser = await authenticate(req);
         const body = await req.json();
-        const currentUser = await authenticate(req)
         const dto =
             CreateDailyRequestSchema.parse(body);
 
@@ -65,7 +33,6 @@ export async function POST(req: NextRequest) {
 
                 },
                 currentUser);
-
         return success(result, 201);
 
     } catch (error) {
@@ -82,7 +49,6 @@ export async function POST(req: NextRequest) {
         }
 
         if (error instanceof AppError) {
-
             return failure(
                 error.code,
                 error.message,
@@ -99,7 +65,6 @@ export async function POST(req: NextRequest) {
                 error.details
             )
         }
-
         return failure(
             ApiErrorCode.UNKNOWN_ERROR,
             "Failed to create daily request.",
@@ -107,3 +72,4 @@ export async function POST(req: NextRequest) {
         );
     }
 }
+

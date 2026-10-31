@@ -1,3 +1,8 @@
+import { Roles } from "@/lib/constants/roles";
+import { AppError } from "@/errors/AppError";
+import { ApiErrorCode } from "@/types/api";
+import { assertBranchFilterAllowed } from "./requestReadScope";
+import { assertCanCreateRequest } from "./requestCreationPolicy";
 import { withRequestEditLease } from "./withRequestEditLease";
 import { prisma, } from "@/lib/prisma";
 import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository";
@@ -6,14 +11,12 @@ import { RequestStatus } from "@/generated/prisma/enums";
 import { DuplicateBusinessDateRequestError } from "@/errors/DuplicateDailyRequestError";
 import { PermissionDeniedError } from "@/errors/PermissionDeniedError";
 import { RequestNotFoundError } from "@/errors/RequestNotFoundError";
-import { CurrentUser } from "../auth/authTypes";
+import type { CurrentUser } from "../auth/authTypes";
 import { requestPolicy } from "./requestPolicy";
-import { Roles } from "@/lib/constants/roles";
-import { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
+import type { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
 import { requireRequestReadAccess } from "./requestReadAccess";
 export interface CreateDailyRequest {
     businessDate: Date;
-
     branchId: string;
 
 }
@@ -23,6 +26,7 @@ export const dailyRequestService = {
         request: CreateDailyRequest,
         currentUser: CurrentUser
     ) {
+        assertCanCreateRequest(currentUser, request.branchId);
         const existing =
             await dailyRequestRepository.findActiveByBranchAndBusinessDate(
                 prisma,
@@ -32,27 +36,36 @@ export const dailyRequestService = {
         if (existing) {
             throw new DuplicateBusinessDateRequestError();
         }
-
         const products =
             await productRepository.listActive(
                 prisma
             );
-
-        if (
-            currentUser.roleCode !== Roles.ADMIN &&
-            currentUser.branchId !== request.branchId
-        ) {
-            throw new PermissionDeniedError(
-                "Users only can create requests for thier own branch."
-            );
-        }
         return prisma.$transaction(async (tx) => {
+            // Preserve inventory users' own drafts. Manager-created drafts go to
+            // the oldest active inventory account in the same branch.
+            const initialAssignee = currentUser.roleCode === Roles.INV
+                ? { id: currentUser.id, username: currentUser.username }
+                : await tx.user.findFirst({
+                    where: {
+                        branchId: request.branchId,
+                        isActive: true,
+                        role: { is: { code: Roles.INV } },
+                    },
+                    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                    select: { id: true, username: true },
+                });
+            if (!initialAssignee) {
+                throw new AppError(
+                    ApiErrorCode.VALIDATION_ERROR,
+                    "No active inventory user is configured for this branch.",
+                    400,
+                );
+            }
             const dailyRequest =
                 await dailyRequestRepository.create(
                     tx,
                     {
                         businessDate: request.businessDate,
-
                         branch: {
                             connect: {
                                 id: request.branchId,
@@ -63,13 +76,11 @@ export const dailyRequestService = {
                                 id: currentUser.id,
                             },
                         },
-
                         assignedTo:{
                             connect: {
-                                id: currentUser.id,
+                                id: initialAssignee.id,
                             }
                         },
-
                         status: RequestStatus.DRAFT,
                     }
                 );
@@ -86,8 +97,7 @@ export const dailyRequestService = {
                 tx,
                 lines
             );
-
-            return dailyRequest;
+            return { ...dailyRequest, initialAssignee };
         });
     },
     async softDeleteReq(id: string, currentUser: CurrentUser, editorToken?: string) {
@@ -104,7 +114,6 @@ export const dailyRequestService = {
         currentUser: CurrentUser
     ) {
         await requireRequestReadAccess(requestId, currentUser);
-
         const request =
             await dailyRequestRepository.findByIdWithLines(
                 prisma,
@@ -125,14 +134,16 @@ export const dailyRequestService = {
             capabilities,
         };
     },
-
     async list(
-        query: DailyRequestQuery
+        query: DailyRequestQuery,
+        currentUser: CurrentUser,
     ) {
+        const scope = assertBranchFilterAllowed(currentUser, query.branchId);
         const request =
             await dailyRequestRepository.findMany(
                 prisma,
-                query
+                query,
+                scope,
             )
 
         const { items, totalItems } = request;
@@ -150,7 +161,6 @@ export const dailyRequestService = {
             pageSize,
 
             totalItems,
-
             totalPages,
         };
     }

@@ -1,23 +1,7 @@
-import { NextRequest } from "next/server";
-import { failure, success } from "@/lib/centralResponse";
-import { ApiErrorCode } from "@/types/api";
-import { authenticate } from "@/features/auth/authMiddleware";
+import type { NextRequest } from "next/server";
+import { authenticatedRead } from "@/lib/authenticatedRead";
 import { dashboardService } from "@/features/dashboard/dashboardService";
 
 export async function GET(req: NextRequest) {
-    try {
-        const currentUser = authenticate(req);
-
-        const result = await dashboardService.getBranchPerformance();
-        
-        return success(result);
-    } catch (error) {
-        console.error(error);
-
-        return failure(
-            ApiErrorCode.DATABASE_ERROR,
-            "Failed to load dashboard data.",
-            500
-        );
-    }
+    return authenticatedRead(req, user => dashboardService.getBranchPerformance(user));
 }

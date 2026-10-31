@@ -1,230 +1,90 @@
-import { prisma } from "@/lib/prisma"
-import { dashboardRepository } from "./dashboardRepository"
-import { RequestStatus } from "@/generated/prisma/enums"
-import { branchRepository } from "../branches/branchRepo"
-import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository"
-import { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema"
-import { CurrentUser } from "../auth/authTypes"
-import { requestPolicy } from "../dailyRequest/requestPolicy"
-
-interface TrendItem {
-    date: Date,
-    created: number,
-    completed: number
-}
-
-interface BranchPerformance {
-    branchId: string
-    branchName: string,
-    totalRequests: number,
-    completed: number | undefined,
-    cancelled: number | undefined,
-}
+import { prisma } from "@/lib/prisma";
+import { dashboardRepository } from "./dashboardRepository";
+import { RequestStatus } from "@/generated/prisma/enums";
+import { branchRepository } from "../branches/branchRepo";
+import { dailyRequestRepository } from "../dailyRequest/dailyRequestRepository";
+import type { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
+import type { CurrentUser } from "../auth/authTypes";
+import { requestPolicy } from "../dailyRequest/requestPolicy";
+import { getRequestReadScope, assertBranchFilterAllowed } from "../dailyRequest/requestReadScope";
 
 export const dashboardService = {
-    async getSummary() {
-        const [
-            draft,
-            inventory,
-            workshop,
-            completedToday,
-            cancelled,
-            completedRequests,
-        ] = await Promise.all([
-
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.DRAFT
-            ),
-
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.INVENTORY_SUBMITTED,
-            ),
-
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.WORKSHOP_PROCESSING,
-            ),
-
-            dashboardRepository.countCompletedTody(
-                prisma,
-                new Date(),
-            ),
-
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.CANCELLED,
-            ),
-
-            dashboardRepository.getCompletedRequests(
-                prisma,
-            ),
+    async getSummary(user: CurrentUser) {
+        const scope = getRequestReadScope(user);
+        const [draft, inventory, workshop, completedToday, cancelled, completedRequests] = await Promise.all([
+            dashboardRepository.countByStatus(prisma, RequestStatus.DRAFT, scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.INVENTORY_SUBMITTED, scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.WORKSHOP_PROCESSING, scope),
+            dashboardRepository.countCompletedTody(prisma, new Date(), scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.CANCELLED, scope),
+            dashboardRepository.getCompletedRequests(prisma, scope),
         ]);
-
+        const durations = completedRequests.flatMap(item =>
+            item.submittedAt && item.completedAt
+                ? [(item.completedAt.getTime() - item.submittedAt.getTime()) / 3600000] : []);
         return {
-            draftRequests: draft,
-
-            inventorySubmitted: inventory,
-
-            workshopProcessing: workshop,
-
-            completedToday,
-
-            cancelledRequests: cancelled,
-
-            completedRequests,
-        }
+            draftRequests: draft, inventorySubmitted: inventory, workshopProcessing: workshop,
+            completedToday, cancelledRequests: cancelled, completedRequests,
+            averageCompletionHours: durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0,
+        };
     },
-
-    async getStatusChartData() {
-        const prismaFormatData = await dashboardRepository.getStatusDistributionChart(
-            prisma,
-        );
-
-        const groupedFormat = prismaFormatData.map(
-            item => ({
-                status: item.status,
-                count: item._count.status
-            })
-        );
-
-        return groupedFormat;
+    async getStatusChartData(user: CurrentUser) {
+        const rows = await dashboardRepository.getStatusDistributionChart(prisma, getRequestReadScope(user));
+        return rows.map(item => ({ status: item.status, count: item._count.status }));
     },
-
-    async getWorkQueue() {
-        const [
-            inventoryQueue,
-            managerQueue,
-            workshopQueue
-        ] = await Promise.all([
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.DRAFT
-            ),
-
-            dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.INVENTORY_SUBMITTED
-            ),
-
-            await dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.MANAGER_SUBMITTED,
-            ) + await dashboardRepository.countByStatus(
-                prisma,
-                RequestStatus.WORKSHOP_PROCESSING
-            ),
+    async getWorkQueue(user: CurrentUser) {
+        const scope = getRequestReadScope(user);
+        const [inventoryQueue, managerQueue, waiting, processing] = await Promise.all([
+            dashboardRepository.countByStatus(prisma, RequestStatus.DRAFT, scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.INVENTORY_SUBMITTED, scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.MANAGER_SUBMITTED, scope),
+            dashboardRepository.countByStatus(prisma, RequestStatus.WORKSHOP_PROCESSING, scope),
         ]);
-
-        return {
-            inventoryQueue,
-            managerQueue,
-            workshopQueue
-        }
+        return { inventoryQueue, managerQueue, workshopQueue: waiting + processing };
     },
-
-    async getRequestTrend() {
-        const [
-            created,
-            completed,
-        ] = await Promise.all([
-            dashboardRepository.getCreatedByDate(prisma),
-            dashboardRepository.getCompletedByDate(prisma),
+    async getRequestTrend(user: CurrentUser) {
+        const scope = getRequestReadScope(user);
+        const [created, completed] = await Promise.all([
+            dashboardRepository.getCreatedByDate(prisma, scope),
+            dashboardRepository.getCompletedByDate(prisma, scope),
         ]);
-
-        const trendMap = new Map<Date | null, TrendItem>();
-        created.forEach(row => {
-            trendMap.set(row.day, {
-                date: row.day,
-                created: Number(row.count),
-                completed: 0,
-            })
-        });
-
-        completed.forEach(row => {
-            const existing = trendMap.get(row.day);
-
-            if (existing) {
-                existing.completed = row.count;
-            } else {
-                trendMap.set(row.day, {
-                    date: row.day,
-                    created: 0,
-                    completed: Number(row.count),
-                })
-            }
-        });
-
-        console.log(trendMap);
-
-        const trend = Array.from(trendMap.values()).sort((a, b) =>
-            a.date.getDate() - b.date.getDate()
-        );
-        return {
-            trend
+        const map = new Map<string, { date: string; created: number; completed: number }>();
+        for (const row of created) map.set(row.day, { date: row.day, created: row.count, completed: 0 });
+        for (const row of completed) {
+            const item = map.get(row.day) ?? { date: row.day, created: 0, completed: 0 };
+            item.completed = row.count;
+            map.set(row.day, item);
         }
+        return { trend: [...map.values()].sort((a, b) => a.date.localeCompare(b.date)) };
     },
-
-    async getBranchPerformance():
-        Promise<BranchPerformance[]> {
-        const [
-            branchTotalPF,
-            branchCompletedPF,
-            branchCancelledPF
-        ] = await Promise.all([
-            dashboardRepository.getTotalByBranch(prisma),
-            dashboardRepository.getBranchCompleted(prisma),
-            dashboardRepository.getBranchCancelled(prisma),
+    async getBranchPerformance(user: CurrentUser) {
+        const scope = getRequestReadScope(user);
+        const [totals, completed, cancelled] = await Promise.all([
+            dashboardRepository.getTotalByBranch(prisma, scope),
+            dashboardRepository.getBranchCompleted(prisma, scope),
+            dashboardRepository.getBranchCancelled(prisma, scope),
         ]);
-
-
-
-        const branchIds = branchTotalPF.map(item => item.branchId);
-        const branches = await branchRepository.getBranchNames(
-            prisma,
-            branchIds,
-        );
-
-        const branchNameMap = new Map(branches.map(b => [b.id, b.name]));
-
-        const branchTotal = branchTotalPF.map(item => ({
-            branchId: item.branchId,
-            branchName: branchNameMap.get(item.branchId) || "Unknown",
-            totalRequests: item._count.branchId,
-            completed: branchCompletedPF.find(pfItem => pfItem.branchId === item.branchId)?._count.branchId,
-            cancelled: branchCancelledPF.find(pfItem => pfItem.branchId === item.branchId)?._count.branchId,
+        const branches = await branchRepository.getBranchNames(prisma, totals.map(row => row.branchId));
+        const names = new Map(branches.map(branch => [branch.id, branch.name]));
+        return totals.map(row => ({
+            branchId: row.branchId,
+            branchName: names.get(row.branchId) ?? "Unknown",
+            totalRequests: row._count.branchId,
+            completed: completed.find(item => item.branchId === row.branchId)?._count.branchId ?? 0,
+            cancelled: cancelled.find(item => item.branchId === row.branchId)?._count.branchId ?? 0,
         }));
-
-        //console.log(branchTotal, branchCompletedPF, branchCancelledPF);
-
-        return branchTotal;
     },
-
-    async getInbox(
-        query: DailyRequestQuery,
-        currentUser: CurrentUser,
-    ) {
-            const result = await dailyRequestRepository.findMany(
-                prisma,
-                query
-            );
-
-            const items = result.items.map((request) =>{
-                const {branchId, branch, ...rest} = request;
-                return{
-                    ...request,
-                    capabilities: requestPolicy.buildCapabilities({
-                    request,
-                    currentUser,
-                }),
-                salesBranchName: branch ? branch.name : branchId,
-                }
-            });
-
-            return{
-                ...result,
-                items,
-            };
-        }
-} 
+    async getInbox(query: DailyRequestQuery, currentUser: CurrentUser) {
+        const scope = assertBranchFilterAllowed(currentUser, query.branchId);
+        // Assignment is derived from the authenticated actor, never the URL.
+        const result = await dailyRequestRepository.findMany(prisma, { ...query, assignedToId: currentUser.id }, scope);
+        return {
+            ...result,
+            items: result.items.map(request => ({
+                ...request,
+                capabilities: requestPolicy.buildCapabilities({ request, currentUser }),
+                salesBranchName: request.branch?.name ?? request.branchId,
+            })),
+        };
+    },
+};

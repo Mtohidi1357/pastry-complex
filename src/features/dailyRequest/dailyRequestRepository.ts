@@ -1,12 +1,12 @@
-import { DbClient } from "../../repositories/types";
+import type { RequestReadScope } from "./requestReadScope";
+import type { DbClient } from "../../repositories/types";
 import {
     Prisma,
     RequestStatus,
 } from "@/generated/prisma/client";
-import { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
+import type { DailyRequestQuery } from "@/validation/dailyRequestQuerySchema";
 import { getSkip } from "@/lib/query/pagination";
 import { buildOrder } from "@/lib/query/buildOrder";
-
 
 export const dailyRequestRepository = {
     async findByIdWithLines(
@@ -34,7 +34,6 @@ export const dailyRequestRepository = {
                 },
             }
         });
-
     },
 
     async findById(
@@ -49,127 +48,33 @@ export const dailyRequestRepository = {
         });
     },
 
-    async findMany(
-        db: DbClient,
-        query: DailyRequestQuery,
-    ) {
-        const skip =
-            getSkip(query.page, query.pageSize);
-
-        const orderBy =
-            buildOrder(
-                query.sort,
-                query.order,
-                "businessDate",
-            );
-        const [items, totalItems] =
-            await Promise.all([
-                db.dailyRequest.findMany({
-                    where: {
-                        deletedAt: null,
-                        ...(query.status && {
-                            status: query.status,
-                        }),
-
-                        ...(query.branchId && {
-                            branchId: query.branchId,
-                        }),
-
-                        ...(query.createdById && {
-                            createdById: query.createdById,
-                        }),
-
-                        ...(query.assignedToId && {
-                            assignedToId: query.assignedToId,
-                        }),
-
-                        ...(query.completedAt && {
-                            completedAt: {
-                                gte: new Date(`${query.completedAt}T00:00:00`),
-                                lte: new Date(`${query.completedAt}T23:59:59`)
-                            }
-                        }),
-
-                        ...(query.search && {
-                            OR: [
-                                {
-                                    createdBy: {
-                                        username: {
-                                            contains: query.search,
-                                        },
-                                    },
-                                },
-                                {
-                                    assignedTo: {
-                                        username:{
-                                            contains: query.search
-                                        }
-                                    }
-                                }
-                            ],
-                        }),
-                    },
-                    include:{
-                        branch: true,
-                    },
-                    orderBy: orderBy,
-                    skip,
-                    take: query.pageSize,
-
-                }),
-
-                db.dailyRequest.count({
-                    where: {
-                        deletedAt: null,
-                        ...(query.status && {
-                            status: query.status,
-                        }),
-
-                        ...(query.branchId && {
-                            branchId: query.branchId,
-                        }),
-
-                        ...(query.createdById && {
-                            createdById: query.createdById,
-                        }),
-
-                        ...(query.assignedToId && {
-                            assignedToId: query.assignedToId,
-                        }),
-
-                        ...(query.completedAt && {
-                            completedAt: {
-                                gte: new Date(`${query.completedAt}T00:00:00`),
-                                lte: new Date(`${query.completedAt}T23:59:59`)
-                            }
-                        }),
-
-                        ...(query.search && {
-                            OR: [
-                                {
-                                    createdBy: {
-                                        username: {
-                                            contains: query.search,
-                                        },
-                                    },
-                                },
-                                {
-                                    assignedTo: {
-                                        username:{
-                                            contains: query.search
-                                        }
-                                    }
-                                }
-                            ],
-                        }),
-                    },
-                }),
-            ]);
-
-        return {
-            items,
-            totalItems,
+    async findMany(db: DbClient, query: DailyRequestQuery, scope: RequestReadScope) {
+        const skip = getSkip(query.page, query.pageSize);
+        const orderBy = buildOrder(query.sort, query.order, "businessDate");
+        const filters: Prisma.DailyRequestWhereInput = {
+            ...(query.status && { status: query.status }),
+            ...(query.branchId && { branchId: query.branchId }),
+            ...(query.createdById && { createdById: query.createdById }),
+            ...(query.assignedToId && { assignedToId: query.assignedToId }),
+            ...(query.completedAt && {
+                completedAt: {
+                    gte: new Date(`${query.completedAt}T00:00:00`),
+                    lt: new Date(new Date(`${query.completedAt}T00:00:00`).getTime() + 86400000),
+                },
+            }),
+            ...(query.search && {
+                OR: [
+                    { createdBy: { username: { contains: query.search } } },
+                    { assignedTo: { username: { contains: query.search } } },
+                ],
+            }),
         };
+        const where: Prisma.DailyRequestWhereInput = { AND: [scope, filters] };
+        const [items, totalItems] = await Promise.all([
+            db.dailyRequest.findMany({ where, include: { branch: true }, orderBy, skip, take: query.pageSize }),
+            db.dailyRequest.count({ where }),
+        ]);
+        return { items, totalItems };
     },
 
     async create(
@@ -180,7 +85,6 @@ export const dailyRequestRepository = {
             data,
         });
     },
-
     async update(
         db: DbClient,
         id: string,
@@ -194,7 +98,6 @@ export const dailyRequestRepository = {
             data,
         });
     },
-
     async findByBusinessDate(
         db: DbClient,
         branchId: string,
@@ -209,7 +112,6 @@ export const dailyRequestRepository = {
             },
         });
     },
-
     async listByStatus(
         db: DbClient,
         status: RequestStatus
@@ -229,7 +131,6 @@ export const dailyRequestRepository = {
             },
         });
     },
-
     async listByBranch(
         db: DbClient,
         branchId: string
@@ -244,7 +145,6 @@ export const dailyRequestRepository = {
             },
         });
     },
-
     async listBetweenDates(
         db: DbClient,
         start: Date,
@@ -263,7 +163,6 @@ export const dailyRequestRepository = {
             },
         });
     },
-
     async listPending(
         db: DbClient
     ) {
@@ -284,7 +183,6 @@ export const dailyRequestRepository = {
             },
         });
     },
-
     async createHistory(
         db: DbClient,
         data: Prisma.WorkflowHistoryUncheckedCreateInput
@@ -309,7 +207,6 @@ export const dailyRequestRepository = {
             }
         });
     },
-
     async restore(
         db: DbClient,
         id: string
@@ -333,7 +230,6 @@ export const dailyRequestRepository = {
             data: lines,
         });
     },
-
     async findActiveByBranchAndBusinessDate(
         db: DbClient,
         branchId: string,
@@ -348,3 +244,4 @@ export const dailyRequestRepository = {
         });
     },
 }
+
