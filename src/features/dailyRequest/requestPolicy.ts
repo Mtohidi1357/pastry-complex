@@ -1,3 +1,4 @@
+import { getRestorePermission } from "./requestRestorePolicy";
 import { type DailyRequest, RequestStatus } from "@/generated/prisma/client";
 import type { CurrentUser } from "../auth/authTypes";
 import { Roles } from "@/lib/constants/roles";
@@ -132,45 +133,9 @@ export const requestPolicy = {
             : { allowed: false, reason: "Cancellation is allowed only before manager submission, by the assigned inventory user or branch manager." };
     },
 
-    canRestore(
-        context: RequestPolicyContext,
-    ): PolicyResult {
-        const { request, currentUser } = context;
-        //Already deleted ...
-        if (!request.deletedAt) {
-            return {
-                allowed: false,
-                reason: "The request is not deleted.",
-            };
-        }
-
-        //Administrator ....
-        if (currentUser.roleCode === Roles.ADMIN) {
-            return {
-                allowed: true,
-            };
-        }
-        //Branch manager ....
-        if (currentUser.roleCode === Roles.BM) {
-            return {
-                allowed: true,
-            };
-        }
-
-        //Workshop manager ....
-        if (currentUser.roleCode === Roles.WM) {
-            return {
-                allowed: false,
-            };
-        }
-
-        //Everyone else ...
-        return {
-            allowed: false,
-            reason: "You are not allowed to restore this request.",
-        };
+    canRestore(context: RequestPolicyContext): PolicyResult {
+        return getRestorePermission(context.request, context.currentUser);
     },
-
     canProduce(
         context: RequestPolicyContext,
     ): PolicyResult {

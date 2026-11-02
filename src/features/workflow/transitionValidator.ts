@@ -69,6 +69,9 @@ export const ActionTargetStatus: Partial<Record<
     [WorkflowAction.CANCEL_REQUEST]:
         RequestStatus.CANCELLED,
 
+    // [WorkflowAction.DELETE_REQUEST]:
+    //     RequestStatus.deleted
+
 };
 export function validTransition(
     from: RequestStatus,

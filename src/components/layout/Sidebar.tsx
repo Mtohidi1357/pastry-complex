@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
 import { notifyAuthChange, useStoredValue } from "@/hooks/useStoredValue";
 
+import { canRestoreRequests } from "@/features/dailyRequest/requestRestorePolicy";
 import { canCreateRequests } from "@/features/dailyRequest/requestCreationPolicy";
 
 interface SidebarProps {
@@ -89,7 +90,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { href: "/dashboard/shared", label: "Shared", icon: "🔗" },
     { href: "/dashboard/archive", label: "Archive", icon: "🗄️" },
     { href: "/dashboard/trash", label: "Trash", icon: "🗑️" },
-  ];
+  ].filter(link => link.href !== "/dashboard/trash" || canRestoreRequests(user?.roleCode));
   // Action buttons (not navigation links)
   const actionButtons = [
     { label: "Refresh", icon: "🔄", action: () => window.location.reload() },
