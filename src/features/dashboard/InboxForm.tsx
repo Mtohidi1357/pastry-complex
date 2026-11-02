@@ -12,6 +12,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import { canCreateRequests } from "../dailyRequest/requestCreationPolicy";
 import { LoggedInUser } from "../auth/authTypes";
 import { useStoredValue } from "@/hooks/useStoredValue";
+import DeleteRequestForm from "../dailyRequest/DeleteRequestForm";
 import CancelRequestForm from "../dailyRequest/CancelRequestForm";
 import RequestEditSession from "../dailyRequest/RequestEditSession";
 type InventoryLine = {
@@ -297,6 +298,14 @@ useEffect(() => {
                                         )}
                                         {item.capabilities.canDelete && (
                                             <button type="button"
+                                                onClick={() => {
+                                                    if (selectedRequestId === item.id) {
+                                                        setError("Close the open subform before deleting this request.");
+                                                        return;
+                                                    }
+                                                    setError(null);
+                                                    void handleRequestDetail(item.id, WorkflowAction.DELETE_REQUEST);
+                                                }}
                                                 className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
                                                 Delete
                                             </button>
@@ -389,6 +398,17 @@ useEffect(() => {
                                                 </button>
                                             )}
                                     </div>
+                                    {selectedRequestId === item.id && workFlowAction === WorkflowAction.DELETE_REQUEST && (
+                                        <RequestEditSession key={`delete-${item.id}`} requestId={item.id} token={token}
+                                            production={false}
+                                            onClose={() => { void handleSubformClose(); }}>
+                                            {editorToken => (
+                                                <DeleteRequestForm requestId={item.id} token={token} editorToken={editorToken}
+                                                    onClose={() => { void handleSubformClose(); }}
+                                                    onDeleted={handleSubformClose} />
+                                            )}
+                                        </RequestEditSession>
+                                    )}
                                     {selectedRequestId === item.id && workFlowAction === WorkflowAction.CANCEL_REQUEST && (
                                         <RequestEditSession key={`cancel-${item.id}`} requestId={item.id} token={token}
                                             production={false}
