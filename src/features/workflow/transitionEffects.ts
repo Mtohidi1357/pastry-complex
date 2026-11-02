@@ -31,7 +31,11 @@ export async function applyTransitionEffects(
                 reportedAt: now,
             }
 
-        //case RequestStatus.CANCELLED:
+        case RequestStatus.CANCELLED:
+            return {
+                ...updateData,
+                cancelledAt: now,
+            };
     }
 
     return updateData;

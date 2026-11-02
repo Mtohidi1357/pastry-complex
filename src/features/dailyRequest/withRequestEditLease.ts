@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
+import type { DailyRequest, Prisma } from "@/generated/prisma/client";
 import type { CurrentUser } from "@/features/auth/authTypes";
 import { AppError } from "@/errors/AppError";
 import { PermissionDeniedError } from "@/errors/PermissionDeniedError";
@@ -28,14 +28,8 @@ export async function withRequestEditLease<T>(
     editorToken: string | undefined,
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
     releaseOnSuccess = false,
+    authorize?: (request: DailyRequest) => void,
 ): Promise<T> {
-    if (!editorToken) {
-        throw new AppError(
-            ApiErrorCode.EDIT_LEASE_CONFLICT,
-            "Open this request in an editor before making changes.",
-            409,
-        );
-    }
     return prisma.$transaction(async (tx) => {
         await lockRequestRow(tx, requestId);
         const request = await tx.dailyRequest.findUnique({ where: { id: requestId } });
@@ -45,6 +39,15 @@ export async function withRequestEditLease<T>(
         if (request.assignedToId !== currentUser.id ||
             (currentUser.roleCode !== Roles.WM && request.branchId !== currentUser.branchId)) {
             throw new PermissionDeniedError("This request is not assigned to you in a permitted branch.");
+        }
+        // Authorization must precede lease errors, under the same row lock.
+        authorize?.(request);
+        if (!editorToken) {
+            throw new AppError(
+                ApiErrorCode.EDIT_LEASE_CONFLICT,
+                "Open this request in an editor before making changes.",
+                409,
+            );
         }
         const lease = await tx.requestEditLease.findUnique({
             where: { dailyRequestId: requestId },

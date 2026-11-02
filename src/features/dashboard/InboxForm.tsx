@@ -12,6 +12,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import { canCreateRequests } from "../dailyRequest/requestCreationPolicy";
 import { LoggedInUser } from "../auth/authTypes";
 import { useStoredValue } from "@/hooks/useStoredValue";
+import CancelRequestForm from "../dailyRequest/CancelRequestForm";
 import RequestEditSession from "../dailyRequest/RequestEditSession";
 type InventoryLine = {
     id: string;
@@ -374,12 +375,31 @@ useEffect(() => {
                                             WorkflowAction.CANCEL_REQUEST
                                         ) && (
                                                 <button type="button"
+                                                    onClick={() => {
+                                                        if (selectedRequestId === item.id) {
+                                                            setError("Close the open subform before cancelling this request.");
+                                                            return;
+                                                        }
+                                                        setError(null);
+                                                        void handleRequestDetail(item.id, WorkflowAction.CANCEL_REQUEST);
+                                                    }}
                                                     className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
                                                 >
                                                     Cancel
                                                 </button>
                                             )}
                                     </div>
+                                    {selectedRequestId === item.id && workFlowAction === WorkflowAction.CANCEL_REQUEST && (
+                                        <RequestEditSession key={`cancel-${item.id}`} requestId={item.id} token={token}
+                                            production={false}
+                                            onClose={() => { void handleSubformClose(); }}>
+                                            {editorToken => (
+                                                <CancelRequestForm requestId={item.id} token={token} editorToken={editorToken}
+                                                    onClose={() => { void handleSubformClose(); }}
+                                                    onCancelled={handleSubformClose} />
+                                            )}
+                                        </RequestEditSession>
+                                    )}
                                     {selectedRequestId === item.id &&
                                         workFlowAction === WorkflowAction.SUBMIT_INVENTORY && (
                                             <div className="mt-2 mb-4">

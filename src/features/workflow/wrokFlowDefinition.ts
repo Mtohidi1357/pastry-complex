@@ -1,5 +1,5 @@
 import { RequestStatus } from "@/generated/prisma/enums";
-import { RoleCode, Roles } from "@/lib/constants/roles";
+import { type RoleCode, Roles } from "@/lib/constants/roles";
 
 export enum WorkflowAction {
     CREATE_REQUEST = "CREATE_REQUEST",
@@ -61,17 +61,11 @@ export const WorkflowDefinition: Partial<Record<
             [WorkflowAction.START_PRODUCTION]: {
                 roles: [Roles.WM]
             },
-            [WorkflowAction.CANCEL_REQUEST]: {
-                roles: [Roles.WM]
-            },
         },
     },
 
     [RequestStatus.WORKSHOP_PROCESSING]: {
         transitions: {
-            [WorkflowAction.CANCEL_REQUEST]: {
-                roles: [Roles.WM]
-            },
             [WorkflowAction.COMPLETE_PRODUCTION]: {
                 roles: [Roles.WM]
             },

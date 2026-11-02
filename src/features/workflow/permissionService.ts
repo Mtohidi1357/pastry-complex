@@ -1,6 +1,6 @@
 import { RequestStatus } from "../../generated/prisma/enums";
 import { WorkflowAction } from "./wrokFlowDefinition";
-import { Roles, RoleCode } from "@/lib/constants/roles"
+import { Roles, type RoleCode } from "@/lib/constants/roles"
 
 export interface PermissionResult {
     allowed: boolean;
@@ -45,11 +45,19 @@ function canBranchManagerPerform(
     request: PermissionRequest
 ): PermissionResult {
 
-    if(request.action !== WorkflowAction.SUBMIT_MANAGER && request.action !== WorkflowAction.CLOSE_REQUEST) {
+    if(request.action !== WorkflowAction.SUBMIT_MANAGER && request.action !== WorkflowAction.CLOSE_REQUEST && request.action !== WorkflowAction.CANCEL_REQUEST) {
         return {
             allowed: false,
             reason: "Branch managers cannot perform this action."
         }
+    }
+
+    if (request.action === WorkflowAction.CANCEL_REQUEST) {
+        return {
+            allowed: request.currentStatus === RequestStatus.INVENTORY_SUBMITTED,
+            reason: request.currentStatus === RequestStatus.INVENTORY_SUBMITTED
+                ? undefined : "Managers can cancel only before manager submission.",
+        };
     }
 
     if(request.currentStatus !== RequestStatus.INVENTORY_SUBMITTED && request.currentStatus !== RequestStatus.COMPLETED){

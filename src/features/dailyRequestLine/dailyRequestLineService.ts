@@ -88,7 +88,7 @@ export const dailyRequestLineService = {
         return withRequestEditLease(requestId, currentUser, editorToken, async (tx) => {
             const request = await dailyRequestRepository.findByIdWithLines(tx, requestId);
             if (!request) throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
-            const permission = requestPolicy.canDelete({ request, currentUser });
+            const permission = requestPolicy.canEdit({ request, currentUser });
             if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
             if (!request.lines.some(line => line.id === lineId)) {
                 throw new BusinessError(BusinessErrorCode.LINE_REQUEST_MISMATCH, "Line does not belong to the request.");

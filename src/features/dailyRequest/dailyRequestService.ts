@@ -27,20 +27,26 @@ export const dailyRequestService = {
         currentUser: CurrentUser
     ) {
         assertCanCreateRequest(currentUser, request.branchId);
-        const existing =
-            await dailyRequestRepository.findActiveByBranchAndBusinessDate(
-                prisma,
-                request.branchId,
-                request.businessDate
-            );
-        if (existing) {
-            throw new DuplicateBusinessDateRequestError();
+        // Business dates use the UTC calendar date shown in the form.
+        const businessDate = new Date(request.businessDate);
+        if (Number.isNaN(businessDate.getTime())) {
+            throw new AppError(ApiErrorCode.VALIDATION_ERROR, "Invalid business date.", 400);
         }
-        const products =
-            await productRepository.listActive(
-                prisma
-            );
+        businessDate.setUTCHours(0, 0, 0, 0);
         return prisma.$transaction(async (tx) => {
+            // Serialize creations for this branch, including when no request
+            // exists yet. Checking outside the transaction permits races.
+            const branches = await tx.$queryRaw<{ id: string }[]>`
+                SELECT id FROM branches WHERE id = ${request.branchId} FOR UPDATE
+            `;
+            if (branches.length === 0) {
+                throw new AppError(ApiErrorCode.NOT_FOUND, "Branch not found.", 404);
+            }
+            const existing = await dailyRequestRepository.findActiveByBranchAndBusinessDate(
+                tx, request.branchId, businessDate,
+            );
+            if (existing) throw new DuplicateBusinessDateRequestError();
+            const products = await productRepository.listActive(tx);
             // Preserve inventory users' own drafts. Manager-created drafts go to
             // the oldest active inventory account in the same branch.
             const initialAssignee = currentUser.roleCode === Roles.INV
@@ -65,7 +71,7 @@ export const dailyRequestService = {
                 await dailyRequestRepository.create(
                     tx,
                     {
-                        businessDate: request.businessDate,
+                        businessDate,
                         branch: {
                             connect: {
                                 id: request.branchId,

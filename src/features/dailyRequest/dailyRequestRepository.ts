@@ -235,11 +235,15 @@ export const dailyRequestRepository = {
         branchId: string,
         businessDate: Date,
     ) {
+        const start = new Date(businessDate);
+        start.setUTCHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 1);
         return db.dailyRequest.findFirst({
             where: {
                 deletedAt: null,
                 branchId,
-                businessDate,
+                businessDate: { gte: start, lt: end },
             },
         });
     },

@@ -20,7 +20,12 @@ export default function CreateNewRequestForm({
 }: RequestFormProps) {
     const token = useStoredValue("token") ?? "";
     const storedUser = useStoredValue("user");
-    const [businessDate, setBusinessDate] = useState<Date | null>(initBusinessDate);
+    const [businessDate, setBusinessDate] = useState<Date | null>(() => {
+        if (!initBusinessDate) return null;
+        const date = new Date(initBusinessDate);
+        date.setUTCHours(0, 0, 0, 0);
+        return date;
+    });
     const [requestId, setRequestId] = useState<string | null>(null);
     const [created, setCreated] = useState(false);
     const [loading, setLoading] = useState(false);

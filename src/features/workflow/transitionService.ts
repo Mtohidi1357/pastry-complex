@@ -16,8 +16,8 @@ import { Roles } from "@/lib/constants/roles";
 import { BusinessError } from "@/errors/BusinessError";
 import { BusinessErrorCode } from "@/types/business";
 import { userRepository } from "@/features/user/userRepo";
-import { branchRepository } from "../branches/branchRepo";
 import { WorkflowAction } from "./wrokFlowDefinition";
+import { requestPolicy } from "../dailyRequest/requestPolicy";
 import { withRequestEditLease } from "../dailyRequest/withRequestEditLease";
 
 export interface TransitionRequest {
@@ -54,12 +54,12 @@ export async function transition(
             )
         }
         //Prohibiting inventory submission if no line exists ...
-        const lineCheck = await ensureTransitionPreconditions(
+        await ensureTransitionPreconditions(
             dailyRequest,
             request.action,
         );
 
-        console.log(lineCheck.message);
+        // Preconditions throw when the transition cannot proceed.
 
         const targetStatus =
             getTargetStatus(request.action);
@@ -104,44 +104,21 @@ export async function transition(
             );
         }
 
-        const targetUsers = await getTargetUser(
-            dailyRequest.branchId,
-            request.action,
-            tx,
-        );
-
-        if(!targetUsers || targetUsers.length === 0){
-            throw new Error(
-                "No target user found for the action requested."
-            )
-        }
-        const branchCode = await branchRepository.getCodeByID(
-            tx,
-            dailyRequest.branchId
-        );
-        console.log(branchCode);
-        const assignedToId = await userRepository.findUser(
-            tx,
-            {
-                username: targetUsers[0].userName,
+        const updateData: Prisma.DailyRequestUpdateInput = { status: targetStatus };
+        if (request.action === WorkflowAction.CANCEL_REQUEST) {
+            const cancellation = requestPolicy.canCancel({ request: dailyRequest, currentUser: request.currentUser });
+            if (!cancellation.allowed) throw new PermissionDeniedError(cancellation.reason);
+            // Cancellation ends the assignment; it has no next workflow user.
+            updateData.assignedTo = { disconnect: true };
+        } else {
+            const targetUsers = await getTargetUser(dailyRequest.branchId, request.action, tx);
+            if (!targetUsers || targetUsers.length === 0) {
+                throw new Error("No target user found for the action requested.");
             }
-        );
-
-        //console.log(JSON.stringify(assignedToId));
-
-        if(!assignedToId){
-            throw new Error(
-                "Target User not found."
-            )
+            const assignedTo = await userRepository.findUser(tx, { username: targetUsers[0].userName });
+            if (!assignedTo) throw new Error("Target user not found.");
+            updateData.assignedTo = { connect: { id: assignedTo.id } };
         }
-        const updateData: Prisma.DailyRequestUpdateInput = {
-            status: targetStatus,
-            assignedTo: {
-                connect: {
-                    id: assignedToId.id
-                }
-            }
-        };
 
         const timeStampedUpdate =
             await applyTransitionEffects(
@@ -189,5 +166,10 @@ export async function transition(
                 updatedRequest,
                 history,
             };
-    }, request.action !== WorkflowAction.START_PRODUCTION);
+    }, request.action !== WorkflowAction.START_PRODUCTION, (dailyRequest) => {
+        if (request.action === WorkflowAction.CANCEL_REQUEST) {
+            const permission = requestPolicy.canCancel({ request: dailyRequest, currentUser: request.currentUser });
+            if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
+        }
+    });
 }
