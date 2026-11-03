@@ -1,0 +1,91 @@
+enum StockReceiptStatus {
+  DRAFT
+  CONFIRMED
+  REVERSED
+}
+
+enum StockMovementKind {
+  RECEIPT
+  RECEIPT_REVERSAL
+}
+
+model StockReceipt {
+  id              String @id @default(uuid())
+  clientRequestId String @unique
+  createHash      String @db.Char(64)
+  branchId        String
+  businessDate    DateTime
+  sourceType      String @default("MANUAL_RECEIPT")
+  status          StockReceiptStatus @default(DRAFT)
+  version         Int @default(1)
+  note            String? @db.Text
+  createdById     String
+  confirmedById   String?
+  reversedById    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  confirmedAt     DateTime?
+  reversedAt      DateTime?
+  reversalReason  String? @db.Text
+  branch          Branch @relation(fields: [branchId], references: [id])
+  createdBy       User @relation("StockReceiptCreator", fields: [createdById], references: [id])
+  confirmedBy     User? @relation("StockReceiptConfirmer", fields: [confirmedById], references: [id])
+  reversedBy      User? @relation("StockReceiptReverser", fields: [reversedById], references: [id])
+  lines           StockReceiptLine[]
+  movements       StockMovement[]
+  @@index([branchId, businessDate])
+  @@index([createdById])
+  @@index([confirmedById])
+  @@index([reversedById])
+  @@map("stock_receipts")
+}
+
+model StockReceiptLine {
+  id        String @id @default(uuid())
+  receiptId String
+  productId String
+  quantity  Decimal @db.Decimal(18, 3)
+  receipt   StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+  @@unique([receiptId, productId])
+  @@index([productId])
+  @@map("stock_receipt_lines")
+}
+
+model BranchStockBalance {
+  branchId  String
+  productId String
+  quantity  Decimal @default(0) @db.Decimal(18, 3)
+  updatedAt DateTime @updatedAt
+  branch    Branch @relation(fields: [branchId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+  @@id([branchId, productId])
+  @@index([productId])
+  @@map("branch_stock_balances")
+}
+
+model StockMovement {
+  id                 String @id @default(uuid())
+  branchId           String
+  productId          String
+  receiptId          String?
+  sourceKey          String @unique
+  kind               StockMovementKind
+  quantityDelta      Decimal @db.Decimal(18, 3)
+  businessDate       DateTime
+  actorId            String
+  postedAt           DateTime @default(now())
+  reason             String? @db.Text
+  originalMovementId String? @unique
+  branch             Branch @relation(fields: [branchId], references: [id])
+  product            Product @relation(fields: [productId], references: [id])
+  receipt            StockReceipt? @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  actor              User @relation("StockMovementActor", fields: [actorId], references: [id])
+  originalMovement   StockMovement? @relation("StockMovementReversal", fields: [originalMovementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversal           StockMovement? @relation("StockMovementReversal")
+  @@index([branchId, productId, postedAt])
+  @@index([productId])
+  @@index([receiptId])
+  @@index([actorId])
+  @@map("stock_movements")
+}

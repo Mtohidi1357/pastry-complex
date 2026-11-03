@@ -1,5 +1,6 @@
 "use client";
 
+import { createEditorToken } from "./createEditorToken";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fetchWithEditLease, leaseRequest, LEASE_LOST_EVENT } from "./editLeaseClient";
 
@@ -23,7 +24,7 @@ export default function RequestEditSession({
     useEffect(() => {
         const generation = ++generationRef.current;
         // Reuse the token during React Strict Mode's setup/cleanup replay only.
-        if (!tokenRef.current) tokenRef.current = crypto.randomUUID();
+        if (!tokenRef.current) tokenRef.current = createEditorToken();
         const editorToken = tokenRef.current;
         let alive = true;
         let stopped = false;

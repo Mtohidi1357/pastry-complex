@@ -1,4 +1,5 @@
 "use client";
+import InventoryPanel from "./InventoryPanel";
 
 import { useRef, useState } from "react";
 import { useStoredValue } from "@/hooks/useStoredValue";
@@ -133,8 +134,8 @@ export default function CreateNewRequestForm({
                 <div className="mt-5 text-gray-900">
                     <RequestEditSession key={requestId} requestId={requestId} token={token} onClose={onClose}>
                         {editorToken => (
-                            <InventoryForm requestId={requestId} token={token} editorToken={editorToken}
-                                onClose={onClose} onSubmitted={onSubmitted} />
+                            <InventoryPanel><InventoryForm requestId={requestId} token={token} editorToken={editorToken}
+                                onClose={onClose} onSubmitted={onSubmitted} /></InventoryPanel>
                         )}
                     </RequestEditSession>
                 </div>

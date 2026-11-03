@@ -20,7 +20,7 @@ export async function lockRequestRow(
     }
 }
 
-// All editors, lease operations, and request writes lock the parent row first.
+// Request writes lock their parent row; stock-posting closes first lock the branch.
 // The callback must use tx for every database access involved in the write.
 export async function withRequestEditLease<T>(
     requestId: string,
@@ -29,12 +29,27 @@ export async function withRequestEditLease<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
     releaseOnSuccess = false,
     authorize?: (request: DailyRequest) => void,
+    lockBranchFirst = false,
 ): Promise<T> {
+    if (currentUser.roleCode === Roles.ADMIN) {
+        throw new PermissionDeniedError("Administrators can monitor requests and restore soft-deleted requests, but cannot edit or perform workflow actions.");
+    }
+    const initial = lockBranchFirst
+        ? await prisma.dailyRequest.findUnique({ where: { id: requestId }, select: { branchId: true } })
+        : null;
+    if (lockBranchFirst && !initial) throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
     return prisma.$transaction(async (tx) => {
+        if (initial) {
+            const branches = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM branches WHERE id = ${initial.branchId} FOR UPDATE`;
+            if (!branches.length) throw new AppError(ApiErrorCode.NOT_FOUND, "Branch not found.", 404);
+        }
         await lockRequestRow(tx, requestId);
         const request = await tx.dailyRequest.findUnique({ where: { id: requestId } });
         if (!request || request.deletedAt) {
             throw new AppError(ApiErrorCode.NOT_FOUND, "Request not found.", 404);
+        }
+        if (initial && request.branchId !== initial.branchId) {
+            throw new AppError(ApiErrorCode.VALIDATION_ERROR, "Request changed. Refresh before closing.", 409);
         }
         if (request.assignedToId !== currentUser.id ||
             (currentUser.roleCode !== Roles.WM && request.branchId !== currentUser.branchId)) {

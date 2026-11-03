@@ -1,9 +1,5 @@
 import InboxForm from "@/features/dashboard/InboxForm";
 
 export default function InboxPage() {
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700">
-      <InboxForm/>
-    </main>
-  );
+    return <main className="min-h-screen w-full min-w-0 bg-[#faf5ed] text-[#39291f]"><InboxForm /></main>;
 }

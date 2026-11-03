@@ -1,3 +1,4 @@
+import { postRequestReceiving } from "../stock/requestReceiving";
 import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository";
 import type { Prisma } from "@/generated/prisma/client";
 import {
@@ -120,11 +121,15 @@ export async function transition(
             updateData.assignedTo = { connect: { id: assignedTo.id } };
         }
 
+        const closedAt = new Date();
+        const stockReceiptId = request.action === WorkflowAction.CLOSE_REQUEST
+            ? await postRequestReceiving(tx, dailyRequest, request.currentUser, closedAt)
+            : null;
         const timeStampedUpdate =
             await applyTransitionEffects(
                 updateData,
                 targetStatus,
-                new Date(),
+                closedAt,
             );
         const updatedRequest = await tx.dailyRequest.update({
                 where: {
@@ -165,11 +170,12 @@ export async function transition(
             return {
                 updatedRequest,
                 history,
+                stockReceiptId,
             };
     }, request.action !== WorkflowAction.START_PRODUCTION, (dailyRequest) => {
         if (request.action === WorkflowAction.CANCEL_REQUEST) {
             const permission = requestPolicy.canCancel({ request: dailyRequest, currentUser: request.currentUser });
             if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
         }
-    });
+    }, request.action === WorkflowAction.CLOSE_REQUEST);
 }

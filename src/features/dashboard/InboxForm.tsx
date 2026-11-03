@@ -1,4 +1,6 @@
 "use client";
+import styles from "./InboxTheme.module.css";
+import InventoryPanel from "../dailyRequest/InventoryPanel";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RequestCapabilities } from "../requestPolicy/requestCapabilities";
@@ -51,11 +53,13 @@ function formatDate(iso: string | null) {
     return new Date(iso).toLocaleString();
 }
 const STATUS_COLORS: Record<string, string> = {
-    WORKSHOP_PROCESSING: "bg-amber-500/20 text-amber-300 border-amber-400/30",
-    DRAFT: "bg-emerald-500/20 text-emerald-300 border-emerald-400/30",
-    INVENTORY_SUBMITTED: "bg-sky-500/20 text-sky-300 border-sky-400/30",
-    MANAGER_SUBMITTED: "bg-red-500/20 text-red-300 border-red-400/30",
-    DELETED: "red",
+    WORKSHOP_PROCESSING: "bg-amber-50 text-amber-800 border-amber-200",
+    DRAFT: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    INVENTORY_SUBMITTED: "bg-sky-50 text-sky-800 border-sky-200",
+    MANAGER_SUBMITTED: "bg-violet-50 text-violet-800 border-violet-200",
+    COMPLETED: "bg-blue-50 text-blue-800 border-blue-200",
+    CLOSED: "bg-slate-100 text-slate-700 border-slate-200",
+    CANCELLED: "bg-red-50 text-red-800 border-red-200",
 };
 async function fetchInboxData(
     token: string,
@@ -88,7 +92,6 @@ export default function InboxForm() {
         }
     }
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [expanded, setExpanded] = useState(true); // must match sidebar state
     const [inbox, setInbox] = useState<WorkItem[]>([]);
     const [totalItems, setTotalItems] = useState(0);
     const [fetching, setLoading] = useState(true);
@@ -168,7 +171,7 @@ useEffect(() => {
         setWorkFlowAction(WorkflowAction.START_PRODUCTION);
     };
     return (
-        <div className="w-full max-w-4xl rounded-2xl bg-white/10 backdrop-blur-lg p-8 shadow-2xl border border-white/20">
+        <div className={`min-h-screen w-full min-w-0 ${styles.canvas}`}>
             <div>
             {/* Sidebar */}
             <Sidebar
@@ -176,126 +179,97 @@ useEffect(() => {
                 onClose={() => setSidebarOpen(false)}
             />
             </div>
-            <div
-                className={`
-                    min-h-screen flex flex-col
-                    transition-all duration-300 ease-in-out
-                    ${expanded ? "lg:pl-20" : "lg:pl-20"}
-                    `}
-            >
-                <div>
-                    <header className="flex items-center justify-between p-4 bg-gray/10 border-b">
-                        <div className="flex items-center gap-4 px-6 py-4">
-                            {/* Hamburger for mobile + desktop toggle */}
-                            {(<button
-                                onClick={() => {
-                                    setExpanded(!expanded);
-                                    setSidebarOpen(!sidebarOpen);
-                                }}
-                                className="p-2 rounded-lg hover:bg-gray-100"
-                                aria-label="Toggle menu"
-                            >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                </svg>
-                            </button>)}
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900">Your Inbox</h1>
-                                <p className="text-sm text-gray-500">
-                                    {inbox.length} entries available
-                                </p>
-                            </div>
-                            {/* Actions in header */}
-                            <div className="ml-auto flex items-center gap-2">
-                                {canCreateRequests(user?.role?.code) &&
-                                 <button
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-                                    onClick={() => {router.push("/daily-request")}}
-                                    >
-                                    + New Request
-                                </button>}
-                            </div>
-                        </div>
-                    </header>
-                </div>
-                <p className="mt-2 mb-6 text-center text-slate-300">
-                    Work items assigned to you:
-                </p>
-
+            <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-[1600px] flex-col px-4 py-6 sm:px-6 lg:pl-28 lg:pr-8">
+                <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => setSidebarOpen(true)}
+                            className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 lg:hidden" aria-label="Open navigation">
+                            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        </button>
+                        <div><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Branch operations</p>
+                            <h1 className="mt-1 text-2xl font-semibold text-[#39291f]">Your Inbox</h1>
+                            <p className="mt-1 text-sm text-slate-600">Requests assigned to you, ready for the next step.</p></div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button type="button" disabled={loading || !token} onClick={() => { void loadInbox(); }}
+                            className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Refresh inbox</button>
+                        {canCreateRequests(user?.role?.code) && <button type="button" onClick={() => router.push("/daily-request")}
+                            className="min-h-10 rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white hover:bg-amber-950">+ New Request</button>}
+                    </div>
+                </header>
+                <section className={styles.banner} aria-label="Pastry workspace">
+                    <div className={styles.copy}><span>A little care, in every batch</span><h2>Good things are taking shape.</h2><p>From branch inventory to the workshop, keep every request moving with care.</p></div>
+                    <div className={styles.art} role="img" aria-label="Golden pastries with berries and coffee" />
+                </section>
+                {loading && <p role="status" className="mb-4 text-sm text-slate-600">Loading inbox…</p>}
                 {error && (
-                    <p className="mt-4 text-sm text-red-400">{error}</p>
+                    <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
                 )}
                 {inbox.length > 0 && (
                     <>
-                        <p className="mt-6 mb-3 text-sm text-slate-400">
+                        <p className="mb-3 text-sm font-medium text-slate-600">
                             {totalItems} item{totalItems !== 1 ? "s" : ""}
                         </p>
-                        <ul className="space-y-3">
+                        <ul className="space-y-5">
                             {inbox.map((item) => (
                                 <li
                                     key={item.id}
-                                    className="rounded-xl bg-white/5 border border-white/10 p-4"
+                                    className="min-w-0 rounded-2xl border border-[#eadcc9] bg-white p-4 shadow-sm sm:p-6"
                                 >
-                                    <div className="flex items-center justify-between gap-3">
-                                        <span className="text-sm text-slate-300">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <span className="text-sm text-slate-600">
                                             Business date:{" "}
-                                            <span className="text-black">
+                                            <span className="font-semibold text-[#39291f]">
                                                 {formatDate(item.businessDate)}
                                             </span>
                                         </span>
                                         <span
                                             className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[item.status] ??
-                                                "bg-slate-500/20 text-slate-300 border-slate-400/30"
+                                                "bg-slate-100 text-slate-700 border-slate-200"
                                                 }`}
                                         >
-                                            {item.status.replace("_", " ")}
+                                            {item.status.replaceAll("_", " ")}
                                         </span>
                                     </div>
-                                    <dl className="mt-3 grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Submitted</dt>
-                                            <dd className="text-slate-200">
+                                    <dl className="mt-4 grid min-w-0 grid-cols-1 gap-x-8 gap-y-3 rounded-xl bg-[#fcf8f2] p-4 text-sm md:grid-cols-2 xl:grid-cols-3">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Submitted</dt>
+                                            <dd className="break-words text-sm font-medium text-slate-800">
                                                 {formatDate(item.submittedAt)}
                                             </dd>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Approved</dt>
-                                            <dd className="text-slate-200">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Approved</dt>
+                                            <dd className="break-words text-sm font-medium text-slate-800">
                                                 {formatDate(item.approvedAt)}
                                             </dd>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Created</dt>
-                                            <dd className="text-slate-200">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Created</dt>
+                                            <dd className="break-words text-sm font-medium text-slate-800">
                                                 {formatDate(item.createdAt)}
                                             </dd>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Branch</dt>
-                                            <dd className="font-mono text-xs text-slate-300">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Branch</dt>
+                                            <dd className="break-words text-xs font-medium text-slate-700">
                                                 {item.salesBranchName}
                                             </dd>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Last Action</dt>
-                                            <dd className="text-slate-200">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Last Action</dt>
+                                            <dd className="break-words text-sm font-medium text-slate-800">
                                                 {formatDate(item.lastActionAt)}
                                             </dd>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <dt className="text-slate-400">Updated</dt>
-                                            <dd className="font-mono text-xs text-slate-300">
+                                        <div className="flex min-w-0 flex-wrap justify-between gap-x-3 gap-y-1">
+                                            <dt className="text-xs text-slate-500">Updated</dt>
+                                            <dd className="break-words text-xs font-medium text-slate-700">
                                                 {formatDate(item.updatedAt)}
                                             </dd>
                                         </div>
                                     </dl>
-                                    <div className="flex items-center gap-2 whitespace-nowrap">
-                                        {item.capabilities.canEdit && (
-                                            <button type="button"
-                                                className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
-                                                Edit
-                                            </button>
-                                        )}
+                                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
                                         {item.capabilities.canDelete && (
                                             <button type="button"
                                                 onClick={() => {
@@ -306,14 +280,8 @@ useEffect(() => {
                                                     setError(null);
                                                     void handleRequestDetail(item.id, WorkflowAction.DELETE_REQUEST);
                                                 }}
-                                                className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
+                                                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50">
                                                 Delete
-                                            </button>
-                                        )}
-                                        {item.capabilities.canRestore && (
-                                            <button type="button"
-                                                className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]">
-                                                Restore
                                             </button>
                                         )}
                                         {/* SUBMIT_INVENTORY */}
@@ -322,7 +290,7 @@ useEffect(() => {
                                         ) && (
                                                 <button
                                                     type="button"
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
+                                                    className="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-950"
                                                     onClick={() =>
                                                         handleRequestDetail(
                                                             item.id,
@@ -337,7 +305,7 @@ useEffect(() => {
                                             WorkflowAction.SUBMIT_MANAGER
                                         ) && (
                                                 <button type="button"
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
+                                                    className="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-950"
                                                     onClick={() =>
                                                         handleRequestDetail(
                                                             item.id,
@@ -356,7 +324,7 @@ useEffect(() => {
                                                 <button
                                                     type="button"
 
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                                    className="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
                                                     onClick={() => {
                                                         void handleProductionOpen(item.id, item.status);
                                                     }}
@@ -369,7 +337,7 @@ useEffect(() => {
                                             WorkflowAction.CLOSE_REQUEST
                                         ) && (
                                                 <button type="button"
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
+                                                    className="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-950"
                                                     onClick={() =>
                                                         handleRequestDetail(
                                                             item.id,
@@ -392,7 +360,7 @@ useEffect(() => {
                                                         setError(null);
                                                         void handleRequestDetail(item.id, WorkflowAction.CANCEL_REQUEST);
                                                     }}
-                                                    className="w-full rounded-full bg-blue-500 py-1 font-medium text-sm text-white transition hover:bg-blue-600 active:scale-[0.98]"
+                                                    className="inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-950"
                                                 >
                                                     Cancel
                                                 </button>
@@ -427,7 +395,7 @@ useEffect(() => {
                                                     production={false}
                                                     onClose={() => { void handleSubformClose(); }}>
                                                     {editorToken => (
-                                                    <InventoryForm
+                                                    <InventoryPanel><InventoryForm
                                                     requestId={item.id}
                                                     token={token}
                                                     editorToken={editorToken}
@@ -439,7 +407,7 @@ useEffect(() => {
                                                         setSelectedRequestId(null);
                                                         await loadInbox();
                                                     }}
-                                                />
+                                                /></InventoryPanel>
                                                     )}
                                                 </RequestEditSession>
                                             </div>)}
@@ -496,7 +464,7 @@ useEffect(() => {
                                                     production={false}
                                                     onClose={() => { void handleSubformClose(); }}>
                                                     {editorToken => (
-                                                    <ReceivingForm
+                                                    <div><p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Saving quantities does not change stock. Closing this request will create its confirmed stock receipt. Do not also enter these goods as a manual receipt.</p><ReceivingForm
                                                     requestId={item.id}
                                                     token={token}
                                                     editorToken={editorToken}
@@ -508,7 +476,7 @@ useEffect(() => {
                                                         setSelectedRequestId(null);
                                                         await loadInbox();
                                                     }}
-                                                />
+                                                /></div>
                                                     )}
                                                 </RequestEditSession>
                                             </div>)}
@@ -518,7 +486,7 @@ useEffect(() => {
                     </>
                 )}
                 {!loading && !error && inbox.length === 0 && (
-                    <p className="mt-6 text-center text-sm text-slate-400">
+                    <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-600">
                         Your inbox is empty.
                     </p>
                 )}

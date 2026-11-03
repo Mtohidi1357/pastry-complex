@@ -1,0 +1,71 @@
+.panel {
+    margin-top: 1rem;
+    color: #0f172a;
+    color-scheme: light;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+.panel > :global(section) {
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    border-radius: 1rem;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 2px 6px rgb(15 23 42 / 6%);
+}
+.panel :global(h2) { color: #0f172a; font-size: 1.125rem; line-height: 1.5; }
+.panel :global(section > div:first-child) { gap: 1rem; padding: 1rem; }
+.panel :global(table) { font-size: 0.875rem; line-height: 1.5; }
+.panel :global(thead) { background: #e2e8f0; color: #334155; }
+.panel :global(th) { padding: 0.875rem 0.75rem; font-weight: 600; }
+.panel :global(td) { padding: 0.75rem; color: #0f172a; }
+.panel :global(tbody tr) { border-color: #e2e8f0; }
+.panel :global(tbody tr:hover) { background: #f8fafc; }
+.panel :global(input), .panel :global(select), .panel :global(textarea) {
+    min-height: 2.5rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #0f172a;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+    opacity: 1;
+}
+.panel :global(input[type="number"]) { width: 100%; min-width: 4.5rem; }
+.panel :global(input:focus-visible), .panel :global(select:focus-visible), .panel :global(textarea:focus-visible) {
+    border-color: #2563eb;
+    outline: 2px solid #bfdbfe;
+    outline-offset: 1px;
+}
+.panel :global(input:disabled), .panel :global(select:disabled), .panel :global(textarea:disabled) {
+    background: #f1f5f9;
+    color: #475569;
+    cursor: not-allowed;
+}
+.panel :global(button) {
+    min-height: 2.25rem;
+    border: 1px solid #1d4ed8;
+    border-radius: 0.5rem;
+    background: #1d4ed8;
+    color: #fff;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.panel :global(button:hover:not(:disabled)) { background: #1e40af; }
+.panel :global(button[class*="text-red"]) { background: #fff; border-color: #fecaca; color: #b91c1c; }
+.panel :global(button[class*="text-red"]:hover:not(:disabled)) { background: #fef2f2; }
+.panel :global(button:focus-visible) { outline: 2px solid #2563eb; outline-offset: 3px; }
+.panel :global(button:disabled) { border-color: #cbd5e1; background: #e2e8f0; color: #64748b; cursor: not-allowed; }
+.panel :global([class*="text-gray-400"]), .panel :global([class*="text-gray-500"]) { color: #64748b; }
+.panel :global(section > div:last-child) { gap: 1rem; padding: 1rem; }
+@media (min-width: 640px) {
+    .panel :global(table) { min-width: 44rem; }
+}
+@media (max-width: 639px) {
+    .panel :global(section > div:first-child), .panel :global(section > div:last-child) { flex-wrap: wrap; }
+    .panel :global(button) { min-height: 2.5rem; }
+}
