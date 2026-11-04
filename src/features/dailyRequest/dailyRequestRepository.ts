@@ -201,15 +201,23 @@ export const dailyRequestRepository = {
         id: string,
         deletedById: string
     ) {
-        return db.dailyRequest.update({
-            where: {
-                id,
-            },
-            data: {
-                deletedAt: new Date(),
-                deletedById,
-            }
+        const deletedAt = new Date();
+        const request = await db.dailyRequest.update({
+            where : {id},
+            data: {deletedAt, deletedById, lastActionAt: deletedAt}
         });
+        await db.workflowHistory.create({
+            data: {
+                dailyRequestId: id,
+                userId: deletedById,
+                fromStatus: request.status,
+                toStatus: request.status,
+                action: "DELETE_REQUEST",
+                changedAt: deletedAt,
+                note: "Soft-deleted; workflow status, quantities and assignment preserved.",
+            },
+        })
+        return request;
     },
     async restore(
         db: DbClient,

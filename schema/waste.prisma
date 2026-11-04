@@ -1,0 +1,75 @@
+enum WasteStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REVERSED
+  CANCELLED
+}
+enum WasteReason {
+  EXPIRED
+  DAMAGED
+  SPOILED
+  OTHER
+}
+model WasteCase {
+  id String @id @default(uuid())
+  trackingNumber Int @unique @default(autoincrement())
+  clientRequestId String @unique
+  createHash String @db.Char(64)
+  branchId String
+  businessDate DateTime
+  status WasteStatus @default(DRAFT)
+  version Int @default(1)
+  note String @db.Text
+  createdById String
+  approvedById String?
+  reversedById String?
+  approvalReason String? @db.Text
+  reversalReason String? @db.Text
+  submittedAt DateTime?
+  approvedAt DateTime?
+  reversedAt DateTime?
+  cancelledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branch Branch @relation(fields: [branchId], references: [id])
+  createdBy User @relation("WasteCreator", fields: [createdById], references: [id])
+  approvedBy User? @relation("WasteApprover", fields: [approvedById], references: [id])
+  reversedBy User? @relation("WasteReverser", fields: [reversedById], references: [id])
+  lines WasteCaseLine[]
+  events WasteCaseEvent[]
+  movements StockMovement[]
+  @@index([branchId, createdAt])
+  @@index([createdById])
+  @@index([approvedById])
+  @@index([reversedById])
+  @@map("waste_cases")
+}
+model WasteCaseLine {
+  id String @id @default(uuid())
+  wasteId String
+  productId String
+  quantity Decimal @db.Decimal(18, 3)
+  reason WasteReason
+  note String? @db.Text
+  wasteCase WasteCase @relation(fields: [wasteId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  @@unique([wasteId, productId])
+  @@index([productId])
+  @@map("waste_case_lines")
+}
+model WasteCaseEvent {
+  id String @id @default(uuid())
+  wasteId String
+  actorId String
+  action String
+  version Int
+  note String? @db.Text
+  payload Json
+  createdAt DateTime @default(now())
+  wasteCase WasteCase @relation(fields: [wasteId], references: [id])
+  actor User @relation("WasteActor", fields: [actorId], references: [id])
+  @@index([wasteId, createdAt])
+  @@index([actorId])
+  @@map("waste_case_events")
+}

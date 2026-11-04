@@ -1,4 +1,5 @@
 "use client";
+import WorkflowFormFrame from "./WorkflowFormFrame";
 import InventoryPanel from "./InventoryPanel";
 
 import { useRef, useState } from "react";
@@ -16,7 +17,7 @@ type RequestFormProps = {
     onSubmitted: () => void;
 };
 
-export default function CreateNewRequestForm({
+function CreateNewRequestForm({
     initBusinessDate, initBranchId, onClose, onSubmitted,
 }: RequestFormProps) {
     const token = useStoredValue("token") ?? "";
@@ -142,4 +143,10 @@ export default function CreateNewRequestForm({
             )}
         </section>
     );
+}
+
+
+// Pastry workflow design wrapper v1
+export default function StyledCreateNewRequestForm(props: Parameters<typeof CreateNewRequestForm>[0]) {
+    return <WorkflowFormFrame stage="new"><CreateNewRequestForm {...props} /></WorkflowFormFrame>;
 }

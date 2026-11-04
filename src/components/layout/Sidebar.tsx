@@ -11,9 +11,11 @@ import { canViewStock } from "@/features/stock/stockPolicy";
 import styles from "./Sidebar.module.css";
 
 type Props = { isOpen: boolean; onClose: () => void };
-type SymbolName = "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
+type SymbolName = "waste" | "count" | "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
 function SidebarIcon({ name }: { name: SymbolName }) {
     const paths: Record<SymbolName, string> = {
+        waste: "M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11l4 6 M14 11l-4 6",
+        count: "M8 5H5v16h14V5h-3 M9 3h6v4H9z M8 11l1 1 2-2 M13 11h3 M8 16l1 1 2-2 M13 16h3",
         catalog: "M4 4h16v16H4z M4 10h16 M10 10v10 M14 7h3 M7 14v3 M14 14h3",
         stock: "M3 7l9-4 9 4-9 4-9-4 M3 7v10l9 4 9-4V7 M12 11v10",
         inbox: "M4 4h16v16H4z M4 13h5l2 3h2l2-3h5",
@@ -36,7 +38,7 @@ export default function Sidebar({ isOpen, onClose }: Props) {
     const roleNames: Record<string, string> = { ADMIN: "Administrator", BM: "Branch manager", INV: "Inventory", WM: "Workshop manager" };
     const links: { href: string; label: string; icon: SymbolName }[] = [
         { href: "/dashboard/inbox", label: "Inbox", icon: "inbox" },
-        ...(canViewStock(user?.roleCode) ? [{ href: "/dashboard/stock", label: "Receiving & stock", icon: "stock" as const }, { href: "/dashboard/stock-counts", label: "Physical stock counts", icon: "stock" as const }] : []),
+        ...(canViewStock(user?.roleCode) ? [{ href: "/dashboard/stock", label: "Receiving & stock", icon: "stock" as const }, { href: "/dashboard/stock-counts", label: "Physical stock counts", icon: "count" as const }, { href: "/dashboard/waste", label: "Waste & damage", icon: "waste" as const }] : []),
         ...(user?.roleCode === "ADMIN" ? [{ href: "/dashboard/monitor", label: "Request Monitor", icon: "monitor" as const }, { href: "/dashboard/products", label: "Products", icon: "catalog" as const }] : []),
         ...(canRestoreRequests(user?.roleCode) ? [{ href: "/dashboard/trash", label: "Deleted requests", icon: "trash" as const }] : []),
     ];

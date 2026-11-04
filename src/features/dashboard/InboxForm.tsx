@@ -1,4 +1,6 @@
 "use client";
+import CountTaskQueue from "./CountTaskQueue";
+import { WasteTaskQueue } from "../waste/WasteWorkspace";
 import { trackingCode } from "@/lib/trackingCode";
 import styles from "./InboxTheme.module.css";
 import InventoryPanel from "../dailyRequest/InventoryPanel";
@@ -96,6 +98,9 @@ export default function InboxForm() {
             //Ignore invalid stored user data.
         }
     }
+    const [countEditorOpen, setCountEditorOpen] = useState(false);
+    const [wasteEditorOpen, setWasteEditorOpen] = useState(false);
+    const [countRefresh, setCountRefresh] = useState(0);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showFinished, setShowFinished] = useState(false);
     const [inboxPage, setInboxPage] = useState(1);
@@ -174,10 +179,12 @@ useEffect(() => {
         requestId: string,
         action: WorkflowAction
     ) => {
+        if (countEditorOpen || wasteEditorOpen) return;
         setSelectedRequestId(requestId);
         setWorkFlowAction(action);
     };
     const handleProductionOpen = (requestId: string, status: RequestStatus) => {
+        if (countEditorOpen || wasteEditorOpen) return;
         if (status !== RequestStatus.MANAGER_SUBMITTED && status !== RequestStatus.WORKSHOP_PROCESSING) {
             setError("This request is not available for production.");
             return;
@@ -204,12 +211,12 @@ useEffect(() => {
                         </button>
                         <div><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Branch operations</p>
                             <h1 className="mt-1 text-2xl font-semibold text-[#39291f]">Your Inbox</h1>
-                            <p className="mt-1 text-sm text-slate-600">Requests assigned to you, ready for the next step.</p></div>
+                            <p className="mt-1 text-sm text-slate-600">{user?.role?.code === "BM" ? "Daily requests assigned to you, plus stock counts and waste cases awaiting your branch’s approval." : "Requests assigned to you, ready for the next step."}</p></div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <button type="button" disabled={loading || !token} onClick={() => { void loadInbox(); }}
+                        <button type="button" disabled={loading || !token || countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => { setCountRefresh(value => value + 1); void loadInbox(); }}
                             className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Refresh inbox</button>
-                        {canCreateRequests(user?.role?.code) && <button type="button" onClick={() => router.push("/daily-request")}
+                        {canCreateRequests(user?.role?.code) && <button type="button" disabled={countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => router.push("/daily-request")}
                             className="min-h-10 rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white hover:bg-amber-950">+ New Request</button>}
                     </div>
                 </header>
@@ -217,10 +224,16 @@ useEffect(() => {
                     <div className={styles.copy}><span>A little care, in every batch</span><h2>Good things are taking shape.</h2><p>From branch inventory to the workshop, keep every request moving with care.</p></div>
                     <div className={styles.art} role="img" aria-label="Golden pastries with berries and coffee" />
                 </section>
-                <label className="mb-4 flex items-center gap-2 text-sm" title="Include closed and cancelled requests. Completed requests awaiting receiving remain visible.">
-                    <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
+                <label className="mb-4 flex items-center gap-2 text-sm" title="Include closed/cancelled requests and finished stock-count/waste approvals. Completed requests awaiting receiving remain visible.">
+                    <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
                     Show finished items
                 </label>
+                {user?.role?.code === "BM" && token && <CountTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || wasteEditorOpen} onEditorChange={setCountEditorOpen} />}
+                {user?.role?.code === "BM" && token && <WasteTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen} onEditorChange={setWasteEditorOpen} />}
+                <fieldset disabled={countEditorOpen || wasteEditorOpen} className="m-0 min-w-0 border-0 p-0">
+                {user?.role?.code === "BM" && <h2 className="mb-3 text-lg font-semibold text-[#39291f]">Daily requests</h2>}
+                {wasteEditorOpen && <p className="mb-3 text-sm text-amber-900">Close the waste review before opening a daily request.</p>}
+                {countEditorOpen && <p className="mb-3 text-sm text-amber-900">Close the stock-count review before opening a daily request.</p>}
                 {loading && <p role="status" className="mb-4 text-sm text-slate-600">Loading inbox…</p>}
                 {error && (
                     <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
@@ -512,6 +525,7 @@ useEffect(() => {
                         Your inbox is empty.
                     </p>
                 )}
+                </fieldset>
             </div>
         </div>
     );

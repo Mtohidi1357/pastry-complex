@@ -1,0 +1,176 @@
+.frame {
+    --flow-ink: #39291f;
+    --flow-muted: #67574a;
+    --flow-line: #e5d6c2;
+    --flow-accent: #783f20;
+    width: 100%;
+    min-width: 0;
+    color: var(--flow-ink);
+    color-scheme: light;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+}
+.frame > :global(section) {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--flow-line);
+    border-radius: 1rem;
+    background: #fff;
+    background-image: none;
+    color: var(--flow-ink);
+    box-shadow: 0 5px 20px rgb(68 43 23 / 7%);
+}
+.frame :global(h1), .frame :global(h2), .frame :global(h3) {
+    color: var(--flow-ink);
+    font-weight: 650;
+    line-height: 1.4;
+}
+.frame :global(h1), .frame :global(h2) { font-size: 1.125rem; }
+.frame :global(section > div:first-child) {
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-color: var(--flow-line);
+    background: #faf4e9;
+}
+.frame :global(section > div:last-child[class*="border-t"]) {
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-color: var(--flow-line);
+    background: #fffaf2;
+}
+.frame :global([class*="text-gray-"]),
+.frame :global([class*="text-blue-100"]) { color: var(--flow-muted); }
+.frame :global(label) { min-width: 0; color: var(--flow-ink); }
+.frame :global([class*="overflow-auto"]), .frame :global([class*="overflow-x-auto"]) {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-color: #b99c7c #f7efe3;
+    scrollbar-width: auto;
+}
+.frame :global(table) {
+    width: 100%;
+    min-width: 42rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+    color: var(--flow-ink);
+}
+.frame[data-workflow-stage="production"] :global(table) { min-width: 37rem; }
+.frame :global(thead) { background: #efe2cf; color: #483223; }
+.frame :global(th) {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #d8c2a6;
+    background: #efe2cf;
+    font-size: 0.8125rem;
+    font-weight: 650;
+}
+.frame :global(td) {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee3d5;
+    background: #fff;
+    color: var(--flow-ink);
+    font-variant-numeric: tabular-nums;
+}
+.frame :global(tbody tr:nth-child(even) td) { background: #fcf9f4; }
+.frame :global(tbody tr:hover td) { background: #fff3df; }
+.frame :global(th:first-child), .frame :global(td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 12rem;
+    max-width: 20rem;
+    box-shadow: 3px 0 5px rgb(68 43 23 / 5%);
+}
+.frame :global(thead th:first-child) { z-index: 2; }
+.frame :global(td:first-child div), .frame :global(td:first-child span) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.frame :global(input), .frame :global(select), .frame :global(textarea) {
+    max-width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #bca58a;
+    border-radius: 0.625rem;
+    background: #fff;
+    color: #39291f;
+    font-size: 1rem;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+    opacity: 1;
+}
+.frame :global(input[type="number"]) { width: 6.5rem; min-width: 5.25rem; }
+.frame :global(input[type="checkbox"]), .frame :global(input[type="radio"]) { min-height: auto; accent-color: var(--flow-accent); }
+.frame :global(input:read-only) { background: #f8f3eb; color: #67574a; }
+.frame :global(input:disabled), .frame :global(select:disabled), .frame :global(textarea:disabled) {
+    background: #eeeae4;
+    color: #675f57;
+    border-color: #cfc4b6;
+    cursor: not-allowed;
+    opacity: 1;
+}
+.frame :global(input:focus-visible), .frame :global(select:focus-visible), .frame :global(textarea:focus-visible), .frame :global(button:focus-visible) {
+    outline: 3px solid #d9a66f;
+    outline-offset: 3px;
+}
+.frame :global(button) {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid #c6ad8f;
+    border-radius: 0.625rem;
+    background: #fff;
+    color: var(--flow-accent);
+    font-size: 0.875rem;
+    font-weight: 650;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.frame :global(button:hover:not(:disabled)) { background: #f7ead8; }
+.frame :global(button[class*="text-red"]) { border-color: #e6b4ad; background: #fff5f3; color: #a12820; }
+.frame :global(button[class*="text-red"]:hover:not(:disabled)) { background: #fde5e0; }
+.frame :global(section > div:last-child[class*="border-t"] > button),
+.frame[data-workflow-stage="new"] > :global(section > div:nth-child(2) > button) {
+    border-color: var(--flow-accent);
+    background: var(--flow-accent);
+    color: #fff;
+}
+.frame :global(section > div:last-child[class*="border-t"] > button:hover:not(:disabled)),
+.frame[data-workflow-stage="new"] > :global(section > div:nth-child(2) > button:hover:not(:disabled)) { background: #5c2d16; }
+.frame :global(button:disabled) {
+    border-color: #cfc4b6;
+    background: #eeeae4;
+    color: #675f57;
+    cursor: not-allowed;
+    opacity: 1;
+}
+.frame :global([role="alert"]), .frame :global([class*="bg-red-"]) { border-color: #e7b7b0; background: #fff1ee; color: #991f18; }
+.frame :global([role="status"]), .frame :global([class*="bg-green-"]) { border-color: #bdd5bc; background: #edf6e9; color: #28522b; }
+.frame :global([class*="bg-yellow-"]) { border-color: #e4cd8f; background: #fff6d9; color: #75510b; }
+.frame[data-workflow-stage="new"] { max-width: 70rem; margin-inline: auto; }
+.frame[data-workflow-stage="new"] > :global(section) { padding: 1.25rem; }
+.frame[data-workflow-stage="new"] > :global(section > div:first-child) { margin: -1.25rem -1.25rem 0; padding: 1.25rem; }
+.page { width: 100%; min-width: 0; min-height: 100dvh; background: #faf5ed; color: #39291f; }
+.page > :global(main) { min-height: 100dvh; padding: 1.5rem; background: #faf5ed; background-image: none; }
+.scrollHint { display: none; margin: 0.75rem 0 0; color: #67574a; font-size: 0.8125rem; line-height: 1.5; }
+@media (max-width: 800px) {
+    .frame :global(section > div:first-child),
+    .frame :global(section > div:last-child[class*="border-t"]) { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    .frame :global(section > div:first-child > button),
+    .frame :global(section > div:last-child[class*="border-t"] > button) { width: 100%; }
+    .frame[data-workflow-stage="new"] > :global(section > div:nth-child(2)) { flex-direction: column; align-items: stretch; }
+    .frame[data-workflow-stage="new"] > :global(section > div:nth-child(2) > label),
+    .frame[data-workflow-stage="new"] > :global(section > div:nth-child(2) > button) { width: 100%; min-width: 0; }
+    .page > :global(main) { padding: 1rem; align-items: flex-start; }
+    .scrollHint { display: block; }
+}
+.frame :global(section > div:last-child[class*="border-t"] > button:disabled),
+.frame[data-workflow-stage="new"] > :global(section > div:nth-child(2) > button:disabled) {
+    border-color: #cfc4b6;
+    background: #eeeae4;
+    color: #675f57;
+}
+.frame :global([class*="text-red-"]) { color: #991f18; }
+.frame :global([class*="text-green-"]) { color: #28522b; }
+.frame :global(button:disabled[class*="text-red-"]) { color: #675f57; }

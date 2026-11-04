@@ -1,5 +1,6 @@
 "use client";
 
+import WorkflowFormFrame from "../WorkflowFormFrame";
 import { fetchWithEditLease } from "../editLeaseClient";
 
 import { useCallback, useEffect, useState } from "react";
@@ -57,7 +58,7 @@ enum LineWarning {
     PRODUCESQTY_GREATER_THAN_REQUESTED = "PRODUCESQTY_GREATER_THAN_REQUESTED"
 }
 
-export default function ProductionForm({
+function ProductionForm({
     requestId,
     token,
     editorToken,
@@ -693,3 +694,9 @@ function setLineErorr(
     }
 }
 
+
+
+// Pastry workflow design wrapper v1
+export default function StyledProductionForm(props: Parameters<typeof ProductionForm>[0]) {
+    return <WorkflowFormFrame stage="production"><ProductionForm {...props} /></WorkflowFormFrame>;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import WorkflowFormFrame from "../WorkflowFormFrame";
 import { fetchWithEditLease } from "../editLeaseClient";
 
 import { useCallback, useEffect, useState } from "react";
@@ -54,7 +55,7 @@ type RequestFormProps = {
     onSubmitted: () => void;
 };
 
-export default function RequestedQuantityForm({
+function RequestedQuantityForm({
     requestId,
     token,
     editorToken,
@@ -762,3 +763,9 @@ export default function RequestedQuantityForm({
     );
 }
 
+
+
+// Pastry workflow design wrapper v1
+export default function StyledRequestedQuantityForm(props: Parameters<typeof RequestedQuantityForm>[0]) {
+    return <WorkflowFormFrame stage="requested"><RequestedQuantityForm {...props} /></WorkflowFormFrame>;
+}

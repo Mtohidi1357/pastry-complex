@@ -1,9 +1,10 @@
 "use client";
 
+import WorkflowFormFrame from "./WorkflowFormFrame";
 import { useRouter } from "next/navigation";
 import CreateNewRequestForm from "./DailyRequestForm";
 
-export default function NewRequestPageClient({ initialBusinessDate }: { initialBusinessDate: Date }) {
+function NewRequestPageClient({ initialBusinessDate }: { initialBusinessDate: Date }) {
     const router = useRouter();
     const close = () => router.push("/dashboard/inbox");
     return (
@@ -12,4 +13,10 @@ export default function NewRequestPageClient({ initialBusinessDate }: { initialB
                 onClose={close} onSubmitted={close} />
         </main>
     );
+}
+
+
+// Pastry workflow design wrapper v1
+export default function StyledNewRequestPageClient(props: Parameters<typeof NewRequestPageClient>[0]) {
+    return <WorkflowFormFrame stage="page"><NewRequestPageClient {...props} /></WorkflowFormFrame>;
 }

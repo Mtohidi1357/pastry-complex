@@ -1,5 +1,6 @@
 "use client";
 
+import WorkflowFormFrame from "../WorkflowFormFrame";
 import { fetchWithEditLease } from "../editLeaseClient";
 
 import { useCallback, useEffect, useState } from "react";
@@ -65,7 +66,7 @@ enum LineError {
     SAVING_FAILED = "Failed to save Receiving."
 }
 
-export default function ReceivingForm({
+function ReceivingForm({
     requestId,
     token,
     editorToken,
@@ -718,3 +719,9 @@ function setLineError(
     }
 }
 
+
+
+// Pastry workflow design wrapper v1
+export default function StyledReceivingForm(props: Parameters<typeof ReceivingForm>[0]) {
+    return <WorkflowFormFrame stage="receiving"><ReceivingForm {...props} /></WorkflowFormFrame>;
+}
