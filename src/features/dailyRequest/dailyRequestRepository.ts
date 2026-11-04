@@ -1,3 +1,4 @@
+import { parseTrackingCode } from "@/lib/trackingCode";
 import type { RequestReadScope } from "./requestReadScope";
 import type { DbClient } from "../../repositories/types";
 import {
@@ -51,6 +52,7 @@ export const dailyRequestRepository = {
     async findMany(db: DbClient, query: DailyRequestQuery, scope: RequestReadScope) {
         const skip = getSkip(query.page, query.pageSize);
         const orderBy = buildOrder(query.sort, query.order, "businessDate");
+        const reference = query.search ? parseTrackingCode("REQ", query.search) : null;
         const filters: Prisma.DailyRequestWhereInput = {
             ...(query.status && { status: query.status }),
             ...(query.branchId && { branchId: query.branchId }),
@@ -64,6 +66,7 @@ export const dailyRequestRepository = {
             }),
             ...(query.search && {
                 OR: [
+                    ...(reference !== null ? [{ trackingNumber: reference }] : []),
                     { createdBy: { username: { contains: query.search } } },
                     { assignedTo: { username: { contains: query.search } } },
                 ],

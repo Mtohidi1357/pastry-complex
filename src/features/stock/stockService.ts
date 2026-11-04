@@ -10,8 +10,9 @@ import { assertStockWrite, stockScope } from "./stockPolicy";
 import { amount, businessDate, invalid, minor, type ReceiptInput } from "./stockValidation";
 
 type Tx = Prisma.TransactionClient;
-const identity = { select: { id: true, username: true } } as const;
+const identity = { select: { id: true, trackingNumber: true, username: true } } as const;
 const receiptView = {
+    sourceRequest: { select: { id: true, trackingNumber: true } },
     branch: { select: { id: true, code: true, name: true } }, createdBy: identity, confirmedBy: identity, reversedBy: identity,
     lines: { orderBy: { productId: "asc" as const }, include: { product: { select: { id: true, code: true, displayName: true, unit: true, isActive: true } } } },
 } as const;
@@ -150,7 +151,7 @@ export async function stockList(user: CurrentUser, kind: "receipts" | "balances"
     if (kind === "receipts") {
         const where: Prisma.StockReceiptWhereInput = { ...scope, ...(!showFinished ? { status: "DRAFT" as const } : {}), ...(sourceType ? { sourceType } : {}), ...(productId ? { lines: { some: { productId } } } : {}) };
         const [items, totalItems] = await prisma.$transaction([
-            prisma.stockReceipt.findMany({ where, ...pagination, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, businessDate: true, status: true, version: true, createdById: true, sourceType: true, sourceRequestId: true, branch: { select: { code: true } }, createdBy: identity, confirmedAt: true } }),
+            prisma.stockReceipt.findMany({ where, ...pagination, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, trackingNumber: true, sourceRequest: { select: { id: true, trackingNumber: true } }, businessDate: true, status: true, version: true, createdById: true, sourceType: true, sourceRequestId: true, branch: { select: { code: true } }, createdBy: identity, confirmedAt: true } }),
             prisma.stockReceipt.count({ where }),
         ]);
         return { items, totalItems, page, pageSize };
@@ -166,7 +167,7 @@ export async function stockList(user: CurrentUser, kind: "receipts" | "balances"
     }
     const movementWhere = { ...where, ...(sourceType ? { receipt: { is: { sourceType } } } : {}) };
     const [items, totalItems] = await prisma.$transaction([
-        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { sourceType: true, sourceRequestId: true } }, stockCount: { select: { id: true, kind: true } } } }),
+        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { id: true, trackingNumber: true, sourceType: true, sourceRequestId: true, sourceRequest: { select: { id: true, trackingNumber: true } } } }, stockCount: { select: { id: true, trackingNumber: true, kind: true } } } }),
         prisma.stockMovement.count({ where: movementWhere }),
     ]);
     return { items, totalItems, page, pageSize };

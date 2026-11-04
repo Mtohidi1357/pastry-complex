@@ -1,9 +1,10 @@
+import { parseTrackingCode } from "@/lib/trackingCode";
 import { parseShowFinished } from "@/lib/listVisibility";
 import { AppError } from "@/errors/AppError";
 import { ApiErrorCode } from "@/types/api";
 import { RequestStatus, type Prisma } from "@/generated/prisma/client";
 
-const fields = ["page", "branchId", "assignedToId", "status", "records", "from", "to", "showFinished"];
+const fields = ["page", "branchId", "assignedToId", "status", "records", "from", "to", "showFinished", "reference"];
 export function monitorFilters(params: URLSearchParams) {
     const invalid = () => new AppError(ApiErrorCode.VALIDATION_ERROR, "Invalid monitoring filters.", 400);
     for (const key of params.keys()) if (!fields.includes(key) || params.getAll(key).length !== 1) throw invalid();
@@ -24,6 +25,8 @@ export function monitorFilters(params: URLSearchParams) {
             }
         }
     }
+    const reference = params.get("reference");
+    if (reference) { const number = parseTrackingCode("REQ", reference); if (number === null) throw invalid(); where.trackingNumber = number; }
     const status = params.get("status");
     if (status) {
         if (!Object.values(RequestStatus).includes(status as RequestStatus)) throw invalid();

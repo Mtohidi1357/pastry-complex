@@ -42,6 +42,7 @@ model Role {
 }
 
 model User {
+  trackingNumber   Int               @unique @default(autoincrement())
   id               String            @id @default(uuid())
   username         String            @unique
   passwordHash     String
@@ -68,12 +69,12 @@ model User {
   stockCountsApproved StockCount[]      @relation("StockCountApprover")
   stockCountEvents    StockCountEvent[] @relation("StockCountActor")
 
+  productImagesEdited ProductImage[] @relation("ProductImageEditor")
+  catalogEvents       CatalogEvent[] @relation("CatalogEventActor")
+
   @@index([branchId])
   @@index([roleId])
   @@map("users")
-
-  productImagesEdited ProductImage[] @relation("ProductImageEditor")
-  catalogEvents CatalogEvent[] @relation("CatalogEventActor")
 }
 
 model ProductCategory {
@@ -88,9 +89,9 @@ model ProductCategory {
   displayName  String
   products     Product[]
 
-  @@map("product_categories")
-
   catalogEvents CatalogEvent[]
+
+  @@map("product_categories")
 }
 
 model Product {
@@ -116,38 +117,39 @@ model Product {
 
   stockCountLines StockCountLine[]
 
+  catalogVersion Int            @default(1)
+  image          ProductImage?
+  catalogEvents  CatalogEvent[]
+
   @@index([categoryId])
   @@map("products")
-
-  catalogVersion Int @default(1)
-  image ProductImage?
-  catalogEvents CatalogEvent[]
 }
 
 model DailyRequest {
-  id           String             @id @default(uuid())
-  businessDate DateTime
-  status       RequestStatus      @default(DRAFT)
-  branchId     String
-  createdById  String
-  submittedAt  DateTime?
-  approvedAt   DateTime?
-  completedAt  DateTime?
-  reportedAt   DateTime?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  assignedToId String?
-  lastActionAt DateTime?
-  deletedAt    DateTime?
-  deletedById  String?
-  cancelledAt  DateTime?
-  lines        DailyRequestLine[]
-  assignedTo   User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
-  createdBy    User               @relation("CreatedBy", fields: [createdById], references: [id])
-  deletedBy    User?              @relation("DeletedBy", fields: [deletedById], references: [id])
-  branch       Branch?            @relation("BranchRequest", fields: [branchId], references: [id])
-  history      WorkflowHistory[]
-  editLease    RequestEditLease?
+  trackingNumber Int                @unique @default(autoincrement())
+  id             String             @id @default(uuid())
+  businessDate   DateTime
+  status         RequestStatus      @default(DRAFT)
+  branchId       String
+  createdById    String
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  completedAt    DateTime?
+  reportedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  assignedToId   String?
+  lastActionAt   DateTime?
+  deletedAt      DateTime?
+  deletedById    String?
+  cancelledAt    DateTime?
+  lines          DailyRequestLine[]
+  assignedTo     User?              @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy      User               @relation("CreatedBy", fields: [createdById], references: [id])
+  deletedBy      User?              @relation("DeletedBy", fields: [deletedById], references: [id])
+  branch         Branch?            @relation("BranchRequest", fields: [branchId], references: [id])
+  history        WorkflowHistory[]
+  editLease      RequestEditLease?
 
   stockReceipt StockReceipt? @relation("RequestStockReceipt")
 
@@ -249,6 +251,7 @@ enum StockMovementKind {
 }
 
 model StockReceipt {
+  trackingNumber  Int                @unique @default(autoincrement())
   id              String             @id @default(uuid())
   clientRequestId String             @unique
   createHash      String             @db.Char(64)
@@ -354,6 +357,7 @@ enum StockCountStatus {
 }
 
 model StockCount {
+  trackingNumber  Int               @unique @default(autoincrement())
   id              String            @id @default(uuid())
   clientRequestId String            @unique
   branchId        String
@@ -413,34 +417,34 @@ model StockCountEvent {
   @@map("stock_count_events")
 }
 
-
 model ProductImage {
-  productId String @id
-  data Bytes @db.MediumBlob
-  mime String @db.VarChar(32)
+  productId   String   @id
+  data        Bytes    @db.MediumBlob
+  mime        String   @db.VarChar(32)
   updatedById String
-  updatedAt DateTime @updatedAt
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  updatedBy User @relation("ProductImageEditor", fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  updatedBy   User     @relation("ProductImageEditor", fields: [updatedById], references: [id])
+
   @@index([updatedById])
   @@map("product_images")
 }
 
 model CatalogEvent {
-  id String @id @default(uuid())
-  productId String?
+  id         String           @id @default(uuid())
+  productId  String?
   categoryId String?
-  actorId String
-  action String
-  message String @db.Text
-  payload Json
-  createdAt DateTime @default(now())
-  product Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
-  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  actor User @relation("CatalogEventActor", fields: [actorId], references: [id])
+  actorId    String
+  action     String
+  message    String           @db.Text
+  payload    Json
+  createdAt  DateTime         @default(now())
+  product    Product?         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  actor      User             @relation("CatalogEventActor", fields: [actorId], references: [id])
+
   @@index([productId, createdAt])
   @@index([categoryId])
   @@index([actorId])
   @@map("catalog_events")
 }
-

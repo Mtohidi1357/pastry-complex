@@ -1,4 +1,5 @@
 "use client";
+import { trackingCode } from "@/lib/trackingCode";
 import styles from "./InboxTheme.module.css";
 import InventoryPanel from "../dailyRequest/InventoryPanel";
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +29,7 @@ type InventoryLine = {
     requestedQty: number | null;
 };
 type WorkItem = {
+    trackingNumber?: number;
     id: string;
     businessDate: string | null;
     status: RequestStatus;
@@ -287,6 +289,7 @@ useEffect(() => {
                                             </dd>
                                         </div>
                                     </dl>
+                                    <p className="mt-3 font-mono text-xs font-semibold text-amber-900">{trackingCode("REQ", item)}</p>
                                     <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
                                         {item.capabilities.canDelete && (
                                             <button type="button"

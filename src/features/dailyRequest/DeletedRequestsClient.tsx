@@ -1,4 +1,5 @@
 "use client";
+import { trackingCode, trackedUser } from "@/lib/trackingCode";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -6,13 +7,13 @@ import Sidebar from "@/components/layout/Sidebar";
 import { useStoredValue } from "@/hooks/useStoredValue";
 
 type DeletedItem = {
-    id: string;
+    id: string; trackingNumber?: number;
     businessDate: string;
     status: string;
     deletedAt: string;
     branch: { name: string } | null;
-    assignedTo: { username: string } | null;
-    deletedBy: { username: string } | null;
+    assignedTo: { username: string; trackingNumber?: number } | null;
+    deletedBy: { username: string; trackingNumber?: number } | null;
 };
 type Result = { items: DeletedItem[]; totalItems: number; page: number; pageSize: number };
 
@@ -129,8 +130,8 @@ function DeletedRequestsView({ token }: { token: string }) {
                 {error && <p role="alert" className="mb-4 rounded bg-red-100 p-3 text-red-800">{error}</p>}
                 {selected && (
                     <section className="mb-4 rounded-xl border border-blue-300 bg-white p-4" aria-label="Confirm restoration">
-                        <h2 className="font-semibold">Restore request {selected.id}?</h2>
-                        <p className="mt-2 text-sm">Status: {selected.status}. Assigned to: {selected.assignedTo?.username ?? "Unassigned"}. Quantities and history will be retained.</p>
+                        <h2 className="font-semibold">Restore request {trackingCode("REQ", selected)}?</h2>
+                        <p className="mt-2 text-sm">Status: {selected.status}. Assigned to: {selected.assignedTo ? trackedUser(selected.assignedTo) : "Unassigned"}. Quantities and history will be retained.</p>
                         <div className="mt-3 flex gap-3">
                             <button type="button" disabled={restoring} onClick={() => { void restoreSelected(); }}
                                 className="rounded bg-blue-700 px-4 py-2 text-white disabled:opacity-50">{restoring ? "Restoring…" : "Confirm restore"}</button>
@@ -149,9 +150,9 @@ function DeletedRequestsView({ token }: { token: string }) {
                                 </tr></thead>
                                 <tbody>{data.items.map(item => (
                                     <tr key={item.id} className="border-t">
-                                        <td className="p-3 font-mono text-xs">{item.id}</td><td className="p-3">{item.businessDate.slice(0, 10)}</td>
+                                        <td className="p-3 font-mono text-xs">{trackingCode("REQ", item)}</td><td className="p-3">{item.businessDate.slice(0, 10)}</td>
                                         <td className="p-3">{item.branch?.name ?? "—"}</td><td className="p-3">{item.status}</td>
-                                        <td className="p-3">{new Date(item.deletedAt).toLocaleString()}</td><td className="p-3">{item.deletedBy?.username ?? "—"}</td>
+                                        <td className="p-3">{new Date(item.deletedAt).toLocaleString()}</td><td className="p-3">{trackedUser(item.deletedBy)}</td>
                                         <td className="p-3"><button type="button" disabled={restoring} onClick={() => { setSelected(item); setError(null); setMessage(null); }}
                                             className="rounded bg-blue-700 px-3 py-2 text-white disabled:opacity-50">Restore</button></td>
                                     </tr>

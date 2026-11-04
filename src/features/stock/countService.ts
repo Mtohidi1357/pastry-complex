@@ -9,7 +9,7 @@ import { amount, businessDate, invalid, minor } from "./stockValidation";
 import type { StartCountInput, SaveCountInput } from "./countValidation";
 
 type Tx = Prisma.TransactionClient;
-const identity = { select: { id: true, username: true } } as const;
+const identity = { select: { id: true, trackingNumber: true, username: true } } as const;
 const detail = { branch: { select: { id: true, code: true, name: true } }, createdBy: identity, approvedBy: identity,
     lines: { orderBy: { productId: "asc" as const }, include: { product: { select: { id: true, code: true, displayName: true, unit: true } } } },
     events: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }], include: { actor: identity } },
@@ -169,7 +169,7 @@ export async function countDetail(user: CurrentUser, id: string) {
 export async function listCounts(user: CurrentUser, page: number, branchId?: string, showFinished = false) {
     const where: Prisma.StockCountWhereInput = { ...stockScope(user, branchId), ...(!showFinished ? { status: { not: "APPROVED" as const } } : {}) }, pageSize = 20;
     const [items, totalItems] = await prisma.$transaction([
-        prisma.stockCount.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, kind: true, status: true, businessDate: true, version: true, createdBy: identity, branch: { select: { code: true } } } }),
+        prisma.stockCount.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, trackingNumber: true, kind: true, status: true, businessDate: true, version: true, createdBy: identity, branch: { select: { code: true } } } }),
         prisma.stockCount.count({ where }),
     ]);
     return { items, totalItems, page, pageSize };

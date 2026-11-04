@@ -9,9 +9,9 @@ import { monitorFilters } from "./monitorQuery";
 export function requireMonitor(user: CurrentUser) {
     if (user.roleCode !== Roles.ADMIN) throw new PermissionDeniedError("This monitor is available only to administrators.");
 }
-const identity = { select: { id: true, username: true } } as const;
+const identity = { select: { id: true, trackingNumber: true, username: true } } as const;
 const summary = {
-    id: true, businessDate: true, status: true, branchId: true, assignedToId: true,
+    id: true, trackingNumber: true, businessDate: true, status: true, branchId: true, assignedToId: true,
     createdAt: true, updatedAt: true, submittedAt: true, approvedAt: true, completedAt: true,
     reportedAt: true, cancelledAt: true, deletedAt: true, lastActionAt: true,
     branch: { select: { id: true, code: true, name: true } },
@@ -30,7 +30,7 @@ export async function monitorOptions(user: CurrentUser) {
     requireMonitor(user);
     const [branches, users] = await prisma.$transaction([
         prisma.branch.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true, isActive: true } }),
-        prisma.user.findMany({ orderBy: { username: "asc" }, select: { id: true, username: true, isActive: true } }),
+        prisma.user.findMany({ orderBy: { username: "asc" }, select: { id: true, trackingNumber: true, username: true, isActive: true } }),
     ]);
     return { branches, users };
 }
