@@ -69,7 +69,8 @@ export const dailyRequestRepository = {
                 ],
             }),
         };
-        const where: Prisma.DailyRequestWhereInput = { AND: [scope, filters] };
+        const visibility: Prisma.DailyRequestWhereInput = query.showFinished === true ? {} : { status: { notIn: [RequestStatus.CLOSED, RequestStatus.CANCELLED] } };
+        const where: Prisma.DailyRequestWhereInput = { AND: [scope, filters, visibility] };
         const [items, totalItems] = await Promise.all([
             db.dailyRequest.findMany({ where, include: { branch: true }, orderBy, skip, take: query.pageSize }),
             db.dailyRequest.count({ where }),

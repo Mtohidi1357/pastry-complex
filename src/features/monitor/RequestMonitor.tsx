@@ -45,6 +45,7 @@ function MonitorView({ token }: { token: string }) {
     const [options, setOptions] = useState<Options>({ branches: [], users: [] });
     const [optionError, setOptionError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
+    const [showFinished, setShowFinished] = useState(false);
     const [page, setPage] = useState(1);
     const [refresh, setRefresh] = useState(0);
     const [listing, setListing] = useState<Listing | null>(null);
@@ -64,7 +65,7 @@ function MonitorView({ token }: { token: string }) {
     }, [token, refresh]);
     useEffect(() => {
         const controller = new AbortController();
-        const params = new URLSearchParams(query); params.set("page", String(page));
+        const params = new URLSearchParams(query); params.set("page", String(page)); params.set("showFinished", String(showFinished));
         read<Listing>(`/api/admin/requests?${params}`, token, controller.signal)
             .then(value => { if (!controller.signal.aborted) { setListing(value); setError(null); } })
             .catch((err: unknown) => {
@@ -72,7 +73,7 @@ function MonitorView({ token }: { token: string }) {
             })
             .finally(() => { if (!controller.signal.aborted) setLoading(false); });
         return () => controller.abort();
-    }, [token, query, page, refresh]);
+    }, [token, query, page, refresh, showFinished]);
     useEffect(() => {
         if (!selected) return;
         const controller = new AbortController();
@@ -106,7 +107,7 @@ function MonitorView({ token }: { token: string }) {
                     <div><button type="button" onClick={() => setSidebarOpen(true)} className="mb-2 rounded border bg-white px-3 py-2 lg:hidden">Menu</button>
                         <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Administration · Read only</p>
                         <h1 className="mt-1 text-2xl font-semibold">Request Monitor</h1>
-                        <p className="mt-1 text-sm text-slate-600">All branches, every workflow stage, including cancelled and deleted requests.</p></div>
+                        <p className="mt-1 text-sm text-slate-600">All branches. Enable Show finished items to include closed, cancelled and deleted requests.</p></div>
                     <div className="flex items-center gap-4"><Link href="/dashboard/trash" className="text-sm text-blue-700 underline">Recover deleted requests</Link>
                         <button type="button" disabled={loading} onClick={reload} className={button}>Refresh</button></div>
                 </header>
@@ -121,9 +122,11 @@ function MonitorView({ token }: { token: string }) {
                     <label className="text-sm font-medium">Business date from<input type="date" name="from" className={field} /></label>
                     <label className="text-sm font-medium">Business date to<input type="date" name="to" className={field} /></label>
                     <div className="flex items-end gap-3 sm:col-span-2"><button type="submit" className={button} disabled={loading}>Apply filters</button>
-                        <button type="reset" className="rounded-lg border border-slate-300 px-4 py-2 text-sm" onClick={() => { setQuery(""); setPage(1); setSelected(null); setLoading(true); setRefresh(value => value + 1); }}>Reset</button>
+                        <button type="reset" className="rounded-lg border border-slate-300 px-4 py-2 text-sm" onClick={() => { setQuery(""); setShowFinished(false); setPage(1); setSelected(null); setLoading(true); setRefresh(value => value + 1); }}>Reset</button>
                         <span className="pb-2 text-xs text-slate-500">Business dates use UTC calendar days.</span></div>
                 </form>
+                <label className="mb-4 flex items-center gap-2 text-sm" title="Include closed, cancelled and deleted requests. Completed requests awaiting receiving remain visible."><input type="checkbox" checked={showFinished} onChange={event => { setShowFinished(event.target.checked); setPage(1); setSelected(null); setLoading(true); setError(null); }} />Show finished items</label>
+                {!showFinished && <p className="mb-4 text-xs text-slate-500">Finished status and Deleted-only filters require Show finished items to be enabled.</p>}
                 {optionError && <p role="alert" className="mb-4 rounded-lg bg-amber-100 p-3 text-sm text-amber-900">{optionError} Use Refresh to retry loading filter choices.</p>}
                 {error && <p role="alert" className="mb-4 rounded-lg bg-red-100 p-3 text-red-800">{error}</p>}
                 {loading && <p role="status" className="mb-4 text-sm text-slate-600">Loading requests…</p>}

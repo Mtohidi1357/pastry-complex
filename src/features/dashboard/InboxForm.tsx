@@ -1,7 +1,7 @@
 "use client";
 import styles from "./InboxTheme.module.css";
 import InventoryPanel from "../dailyRequest/InventoryPanel";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RequestCapabilities } from "../requestPolicy/requestCapabilities";
 import { WorkflowAction } from "../workflow/wrokFlowDefinition";
@@ -63,9 +63,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 async function fetchInboxData(
     token: string,
+    showFinished: boolean,
+    page: number,
     signal?: AbortSignal,
 ) {
-    const res = await fetch("/api/dashboard/inbox", {
+    const query = new URLSearchParams({ showFinished: String(showFinished), page: String(page), pageSize: "20" });
+    const res = await fetch(`/api/dashboard/inbox?${query}`, {
         headers: {
             Authorization: `Bearer ${token}`,
         },
@@ -92,6 +95,9 @@ export default function InboxForm() {
         }
     }
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [showFinished, setShowFinished] = useState(false);
+    const [inboxPage, setInboxPage] = useState(1);
+    const listGeneration = useRef(0);
     const [inbox, setInbox] = useState<WorkItem[]>([]);
     const [totalItems, setTotalItems] = useState(0);
     const [fetching, setLoading] = useState(true);
@@ -110,20 +116,25 @@ export default function InboxForm() {
 // Refresh after a button click or workflow action.
 const loadInbox = async () => {
     if (!token) return;
+    const generation = ++listGeneration.current;
     setLoading(true);
     setError(null);
     try {
-        const data = await fetchInboxData(token);
+        const data = await fetchInboxData(token, showFinished, inboxPage);
+        if (generation !== listGeneration.current) return;
+        const lastPage = Math.max(1, Math.ceil(data.totalItems / 20));
+        if (inboxPage > lastPage) { listGeneration.current++; setInboxPage(lastPage); return; }
         setInbox(data.items);
         setTotalItems(data.totalItems);
     } catch (err) {
+        if (generation !== listGeneration.current) return;
         setError(
             err instanceof Error
                 ? err.message
                 : "Failed to load inbox."
         );
     } finally {
-        setLoading(false);
+        if (generation === listGeneration.current) setLoading(false);
     }
 };
 // Initial load: update state in the network completion callbacks.
@@ -131,16 +142,19 @@ useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
     const { signal } = controller;
+    const generation = ++listGeneration.current;
 
-    fetchInboxData(token, signal)
+    fetchInboxData(token, showFinished, inboxPage, signal)
         .then((data) => {
-            if (signal.aborted) return;
+            if (signal.aborted || generation !== listGeneration.current) return;
+            const lastPage = Math.max(1, Math.ceil(data.totalItems / 20));
+            if (inboxPage > lastPage) { listGeneration.current++; setInboxPage(lastPage); return; }
             setInbox(data.items);
             setTotalItems(data.totalItems);
             setError(null);
         })
         .catch((err: unknown) => {
-            if (signal.aborted) return;
+            if (signal.aborted || generation !== listGeneration.current) return;
             setError(
                 err instanceof Error
                     ? err.message
@@ -148,12 +162,12 @@ useEffect(() => {
             );
         })
         .finally(() => {
-            if (!signal.aborted) {
+            if (!signal.aborted && generation === listGeneration.current) {
                 setLoading(false);
             }
         });
     return () => controller.abort();
-}, [token]);
+}, [token, showFinished, inboxPage]);
     const handleRequestDetail = async (
         requestId: string,
         action: WorkflowAction
@@ -201,6 +215,10 @@ useEffect(() => {
                     <div className={styles.copy}><span>A little care, in every batch</span><h2>Good things are taking shape.</h2><p>From branch inventory to the workshop, keep every request moving with care.</p></div>
                     <div className={styles.art} role="img" aria-label="Golden pastries with berries and coffee" />
                 </section>
+                <label className="mb-4 flex items-center gap-2 text-sm" title="Include closed and cancelled requests. Completed requests awaiting receiving remain visible.">
+                    <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
+                    Show finished items
+                </label>
                 {loading && <p role="status" className="mb-4 text-sm text-slate-600">Loading inbox…</p>}
                 {error && (
                     <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
@@ -485,6 +503,7 @@ useEffect(() => {
                         </ul>
                     </>
                 )}
+                {!loading && !error && totalItems > 0 && <nav aria-label="Inbox pages" className="mt-4 flex items-center justify-between gap-3 text-sm"><span>{totalItems} matching requests · Page {inboxPage}</span><div className="flex gap-2"><button type="button" disabled={selectedRequestId !== null || inboxPage <= 1} className="rounded-lg border bg-white px-3 py-2 disabled:opacity-50" onClick={() => { setInboxPage(inboxPage - 1); setInbox([]); setLoading(true); }}>Previous</button><button type="button" disabled={selectedRequestId !== null || inboxPage * 20 >= totalItems} className="rounded-lg border bg-white px-3 py-2 disabled:opacity-50" onClick={() => { setInboxPage(inboxPage + 1); setInbox([]); setLoading(true); }}>Next</button></div></nav>}
                 {!loading && !error && inbox.length === 0 && (
                     <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-600">
                         Your inbox is empty.

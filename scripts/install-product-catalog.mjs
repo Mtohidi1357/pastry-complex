@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),file=path.join(root,'prisma/schema.prisma');
+const original=fs.readFileSync(file,'utf8'),extra=fs.readFileSync(path.join(root,'schema/product-catalog.prisma'),'utf8');let source=original;
+const names=['ProductImage','CatalogEvent'],present=names.filter(name=>new RegExp('^model '+name+'\\s*\\{','m').test(source));
+if(present.length&&present.length!==names.length)throw Error('Partial catalog schema found; no files changed.');
+const fields={Product:['catalogVersion Int @default(1)','image ProductImage?','catalogEvents CatalogEvent[]'],ProductCategory:['catalogEvents CatalogEvent[]'],User:['productImagesEdited ProductImage[] @relation("ProductImageEditor")','catalogEvents CatalogEvent[] @relation("CatalogEventActor")']};
+for(const[name,lines]of Object.entries(fields)){const re=new RegExp('(^model '+name+'\\s*\\{)([\\s\\S]*?)(^\\})','m');if(!re.test(source))throw Error('Missing '+name+' model; no files changed.');source=source.replace(re,(...parts)=>{const[,opening,body,closing]=parts,missing=[];for(const line of lines){const key=line.split(' ')[0],existing=body.split(/\r?\n/).find(value=>new RegExp('^\\s*'+key+'\\s').test(value));if(existing){if(existing.trim().replace(/\s+/g,' ')!==line)throw Error('Conflicting '+name+'.'+key+'; no files changed.');}else missing.push('  '+line);}return opening+body+(missing.length?'\n'+missing.join('\n')+'\n':'')+closing;});}
+if(!present.length)source+='\n\n'+extra+'\n';if(source===original){console.log('Product catalog schema already installed.');process.exit(0);}if(process.argv.includes('--check')){console.log('Catalog schema can be installed; no files changed.');process.exit(0);}const backup=file+'.before-product-catalog.bak';if(!fs.existsSync(backup))fs.writeFileSync(backup,original,{flag:'wx'});fs.writeFileSync(file,source);console.log('Catalog version, image and audit models added; existing schema preserved.');

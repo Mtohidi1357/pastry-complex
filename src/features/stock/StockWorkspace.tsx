@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { jwtDecode } from "jwt-decode";
 import Link from "next/link";
+import AdminBalanceSheet from "./AdminBalanceSheet";
 import Sidebar from "@/components/layout/Sidebar";
 import { useStoredValue } from "@/hooks/useStoredValue";
 import { createEditorToken } from "../dailyRequest/createEditorToken";
@@ -15,7 +16,7 @@ type Receipt = { id: string; businessDate: string; status: string; version: numb
     branch: { code: string; name?: string }; createdBy: { username: string }; confirmedBy?: { username: string } | null; reversedBy?: { username: string } | null;
     lines: { productId: string; quantity: string; product: Product }[] };
 type Row = { id?: string; productId?: string; branch: { code: string }; product?: Product; quantity?: string; quantityDelta?: string;
-    status?: string; businessDate?: string; postedAt?: string; kind?: string; actor?: { username: string }; reason?: string | null; receiptId?: string | null; sourceType?: string; sourceRequestId?: string | null; receipt?: { sourceType: string; sourceRequestId: string | null } | null; createdBy?: { username: string } };
+    status?: string; businessDate?: string; postedAt?: string; kind?: string; actor?: { username: string }; reason?: string | null; receiptId?: string | null; sourceType?: string; sourceRequestId?: string | null; stockCount?: { id: string; kind: string } | null; receipt?: { sourceType: string; sourceRequestId: string | null } | null; createdBy?: { username: string } };
 type Listing = { items: Row[]; totalItems: number; pageSize: number };
 type Options = { products: Product[]; branches: { id: string; code: string; name: string }[] };
 const input = "mt-1 w-full rounded-lg border border-[#d9c7b1] bg-white px-3 py-2 text-sm text-[#39291f] focus:outline-none focus:ring-2 focus:ring-amber-200 disabled:bg-stone-100";
@@ -34,6 +35,7 @@ export default function StockWorkspace() {
     if (!actor || !canViewStock(actor.roleCode)) return <p>Please <Link href="/login" className="underline">sign in</Link> with a stock-authorized account.</p>;
     return <StockView key={token} token={token} actor={actor} />;
 }
+function movementSource(row: Row) { return row.kind === "OPENING_BALANCE" ? "Opening balance" : row.kind === "COUNT_ADJUSTMENT" ? "Count adjustment" : sourceName(row.receipt?.sourceType); }
 function sourceName(value?: string) { return value === "REQUEST_RECEIVING" ? "Request receiving" : "Manual receiving"; }
 function StockView({ token, actor }: { token: string; actor: Actor }) {
     const [menu, setMenu] = useState(false), [tab, setTab] = useState<"receipts" | "balances" | "movements">("receipts");
@@ -42,7 +44,9 @@ function StockView({ token, actor }: { token: string; actor: Actor }) {
     const [listing, setListing] = useState<Listing | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<Receipt | null>(null), [opening, setOpening] = useState(false), [creating, setCreating] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
+    const [showFinished, setShowFinished] = useState(false);
     const openGeneration = useRef(0);
+    const adminBalances = actor.roleCode === "ADMIN" && tab === "balances";
     useEffect(() => {
         const controller = new AbortController();
         api<Options>("/api/stock/options", token, "GET", undefined, controller.signal)
@@ -51,15 +55,22 @@ function StockView({ token, actor }: { token: string; actor: Actor }) {
         return () => controller.abort();
     }, [token, refresh]);
     useEffect(() => {
+        if (adminBalances) return;
         const controller = new AbortController(), query = new URLSearchParams({ page: String(page) });
         if (branch) query.set("branchId", branch); if (product) query.set("productId", product);
         if (source && tab !== "balances") query.set("sourceType", source);
+        if (tab === "receipts") query.set("showFinished", String(showFinished));
+        let relocated = false;
         api<Listing>(`/api/stock/${tab}?${query}`, token, "GET", undefined, controller.signal)
-            .then(value => { if (!controller.signal.aborted) { setListing(value); setError(null); } })
+            .then(value => { if (!controller.signal.aborted) {
+                const lastPage = Math.max(1, Math.ceil(value.totalItems / value.pageSize));
+                if (page > lastPage) { relocated = true; setPage(lastPage); return; }
+                setListing(value); setError(null);
+            } })
             .catch((err: unknown) => { if (!controller.signal.aborted) { setListing(null); setError(err instanceof Error ? err.message : "Stock could not be loaded."); } })
-            .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+            .finally(() => { if (!controller.signal.aborted && !relocated) setLoading(false); });
         return () => controller.abort();
-    }, [token, tab, branch, product, source, page, refresh]);
+    }, [token, tab, branch, product, source, page, refresh, adminBalances, showFinished]);
     async function open(id: string) {
         if (creating) { setError("Close the new receipt form first."); return; }
         const generation = ++openGeneration.current;
@@ -75,9 +86,9 @@ function StockView({ token, actor }: { token: string; actor: Actor }) {
         <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:pl-28">
             <header className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><button type="button" onClick={() => setMenu(true)} className={`${secondary} mb-2 lg:hidden`}>Menu</button>
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Branch stock · Receiving</p><h1 className="mt-1 text-2xl font-semibold">Receiving & stock</h1></div>
-                <div className="flex flex-wrap gap-3"><button type="button" disabled={loading} className={secondary} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Refresh</button>
+                <div className="flex flex-wrap gap-3"><Link href="/dashboard/stock-counts" className={secondary}>Physical stock counts</Link><button type="button" disabled={loading && !adminBalances} className={secondary} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Refresh</button>
                     {actor.roleCode === "INV" && <button type="button" className={primary} disabled={creating || !!selected || opening} onClick={() => { closeReceipt(); setCreating(true); setMessage(null); }}>New manual receipt</button>}</div></header>
-            <p className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">This ledger combines manual receipts and final receiving posted when a request is closed after this update. Historical closed requests and physical opening counts are not imported. Do not enter the same goods through both sources.</p>
+            <p className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">This ledger combines receiving with manager-approved opening balances and stock-count adjustments. Historical stock is not imported automatically. Use Physical stock counts to establish or reconcile actual quantities; do not also enter those same goods as receipts.</p>
             {message && <p role="status" className="mb-4 rounded-lg bg-green-100 p-3 text-green-900">{message}</p>}
             {(error || optionError) && <p role="alert" className="mb-4 rounded-lg bg-red-100 p-3 text-red-800">{error ?? optionError}</p>}
             {creating && <ReceiptEditor key="new" token={token} products={options.products} onClose={closeReceipt} onSaved={receipt => changed(receipt, "Draft saved. Stock has not changed; confirm the receipt when checked.")} />}
@@ -85,20 +96,21 @@ function StockView({ token, actor }: { token: string; actor: Actor }) {
             {selected && <ReceiptPanel key={`${selected.id}:${selected.version}`} receipt={selected} token={token} actor={actor} products={options.products} onClose={closeReceipt} onChanged={changed} />}
             <section className="mt-5 rounded-2xl border border-[#eadcc9] bg-white p-4 shadow-sm">
                 <div className="mb-4 flex flex-wrap gap-2">{(["receipts", "balances", "movements"] as const).map(value => <button key={value} type="button" disabled={creating || !!selected} className={tab === value ? primary : secondary}
-                    onClick={() => { setTab(value); if (value === "balances") setSource(""); setPage(1); setLoading(true); }}>{value === "receipts" ? "Receipts" : value === "balances" ? "Ledger balances" : "Movement history"}</button>)}</div>
-                <div className="mb-4 flex flex-wrap gap-4"><label className="min-w-44 text-sm">Branch<select value={branch} disabled={creating || !!selected} className={input} onChange={event => { setBranch(event.target.value); setPage(1); setLoading(true); }}>
-                    <option value="">{actor.roleCode === "ADMIN" ? "All branches" : "My branch"}</option>{options.branches.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
+                    onClick={() => { setTab(value); setError(null); if (value === "balances") setSource(""); setPage(1); setLoading(true); }}>{value === "receipts" ? "Receipts" : value === "balances" ? "Ledger balances" : "Movement history"}</button>)}</div>
+                <div className="mb-4 flex flex-wrap gap-4">{!adminBalances && <label className="min-w-44 text-sm">Branch<select value={branch} disabled={creating || !!selected} className={input} onChange={event => { setBranch(event.target.value); setPage(1); setLoading(true); }}>
+                    <option value="">{actor.roleCode === "ADMIN" ? "All branches" : "My branch"}</option>{options.branches.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>}
                     <label className="min-w-44 text-sm">Product<select value={product} disabled={creating || !!selected} className={input} onChange={event => { setProduct(event.target.value); setPage(1); setLoading(true); }}><option value="">All products</option>{options.products.map(item => <option key={item.id} value={item.id}>{item.code} · {item.displayName}</option>)}</select></label>
-                    {tab !== "balances" && <label className="min-w-44 text-sm">Source<select value={source} disabled={creating || !!selected} className={input} onChange={event => { setSource(event.target.value); setPage(1); setLoading(true); }}><option value="">Both sources</option><option value="MANUAL_RECEIPT">Manual receiving</option><option value="REQUEST_RECEIVING">Request receiving</option></select></label>}
+                    {tab === "receipts" && <label className="flex items-end gap-2 pb-2 text-sm" title="Include confirmed and reversed receipts, including request-generated receipts."><input type="checkbox" checked={showFinished} disabled={creating || !!selected || opening} onChange={event => { setShowFinished(event.target.checked); setPage(1); setLoading(true); }} />Show finished items</label>}
+                    {tab !== "balances" && <label className="min-w-44 text-sm">Source<select value={source} disabled={creating || !!selected} className={input} onChange={event => { setSource(event.target.value); setPage(1); setLoading(true); }}><option value="">{tab === "movements" ? "All movement sources" : "Both receiving sources"}</option><option value="MANUAL_RECEIPT">Manual receiving</option><option value="REQUEST_RECEIVING">Request receiving</option></select></label>}
                 </div>
-                {loading ? <p role="status" className="p-4">Loading…</p> : listing && <>
+                {adminBalances ? <AdminBalanceSheet token={token} productId={product} refresh={refresh} /> : loading ? <p role="status" className="p-4">Loading…</p> : listing && <>
                     <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-sm"><thead className="bg-[#f7efe3]"><tr>
                         {(tab === "receipts" ? ["Receipt / request reference", "Source", "Branch", "Business date", "Status", "Created by", ""] : tab === "balances" ? ["Branch", "Product", "Unit", "Ledger quantity"] : ["Posted", "Business date", "Source", "Branch", "Product", "Movement", "Quantity change", "Actor", "Reference / reason"]).map(label => <th key={label} className="p-3">{label}</th>)}</tr></thead>
                         <tbody>{listing.items.map(row => <tr key={row.id ?? `${row.branch.code}:${row.productId}`} className="border-t border-stone-100 align-top">
                             {tab === "receipts" ? <><td className="max-w-52 break-all p-3 font-mono text-xs">{row.id}{row.sourceRequestId && <p className="mt-2 text-amber-900">Request: {row.sourceRequestId}</p>}</td><td className="p-3">{sourceName(row.sourceType)}</td><td className="p-3">{row.branch.code}</td><td className="p-3">{row.businessDate?.slice(0, 10)}</td><td className="p-3">{row.status}</td><td className="p-3">{row.createdBy?.username}</td><td className="p-3"><button type="button" disabled={creating || !!selected || opening} className={secondary} onClick={() => { if (row.id) void open(row.id); }}>Open receipt</button></td></> :
                                 tab === "balances" ? <><td className="p-3">{row.branch.code}</td><td className="p-3">{row.product?.displayName}<small className="block text-stone-500">{row.product?.code}</small></td><td className="p-3">{row.product?.unit}</td><td className="p-3 font-semibold tabular-nums">{row.quantity}</td></> :
-                                    <><td className="p-3 text-xs">{row.postedAt ? new Date(row.postedAt).toLocaleString() : "—"}</td><td className="p-3">{row.businessDate?.slice(0, 10)}</td><td className="p-3">{sourceName(row.receipt?.sourceType)}</td><td className="p-3">{row.branch.code}</td><td className="p-3">{row.product?.displayName} ({row.product?.unit})</td><td className="p-3 text-xs">{row.kind}</td><td className="p-3 font-semibold tabular-nums">{row.quantityDelta}</td><td className="p-3">{row.actor?.username}</td><td className="max-w-60 break-words p-3 text-xs">{row.receiptId}{row.receipt?.sourceRequestId && <p className="mt-1">Request: {row.receipt.sourceRequestId}</p>}<p className="mt-1">{row.reason}</p></td></>}
-                        </tr>)}</tbody></table>{!listing.items.length && <p className="p-5 text-stone-600">No ledger entries on this page. Products with no posted movements have a zero balance in this new ledger.</p>}</div>
+                                    <><td className="p-3 text-xs">{row.postedAt ? new Date(row.postedAt).toLocaleString() : "—"}</td><td className="p-3">{row.businessDate?.slice(0, 10)}</td><td className="p-3">{movementSource(row)}</td><td className="p-3">{row.branch.code}</td><td className="p-3">{row.product?.displayName} ({row.product?.unit})</td><td className="p-3 text-xs">{row.kind}</td><td className="p-3 font-semibold tabular-nums">{row.quantityDelta}</td><td className="p-3">{row.actor?.username}</td><td className="max-w-60 break-words p-3 text-xs">{row.stockCount && <p>Count: {row.stockCount.id}</p>}{row.receiptId}{row.receipt?.sourceRequestId && <p className="mt-1">Request: {row.receipt.sourceRequestId}</p>}<p className="mt-1">{row.reason}</p></td></>}
+                        </tr>)}</tbody></table>{!listing.items.length && <p className="p-5 text-stone-600">{tab === "receipts" ? (showFinished ? "No receipts match these filters." : "No unfinished receipts match. Enable Show finished items to review confirmed request/manual receipts and reversals.") : "No ledger entries on this page. Products with no posted movements have a zero balance in this ledger."}</p>}</div>
                     <div className="mt-4 flex items-center justify-between gap-3 text-sm"><span>{listing.totalItems} entries · Page {page}</span><div className="flex gap-2"><button type="button" className={secondary} disabled={page <= 1 || creating || !!selected} onClick={() => { setPage(page - 1); setLoading(true); }}>Previous</button><button type="button" className={secondary} disabled={page * listing.pageSize >= listing.totalItems || creating || !!selected} onClick={() => { setPage(page + 1); setLoading(true); }}>Next</button></div></div>
                 </>}
             </section>

@@ -122,7 +122,7 @@ export async function reverseReceipt(user: CurrentUser, id: string, version: num
             if (next < BigInt(0)) invalid("Reversal would make stock negative. Review later stock movements first.", 409);
             const original = originals.find(movement => movement.productId === line.productId);
             if (!original || original.branchId !== receipt.branchId || minor(original.quantityDelta.toString()) !== quantity) invalid("Original movement does not match receipt.", 409);
-            await tx.branchStockBalance.update({ where: { branchId_productId: { branchId: receipt.branchId, productId: line.productId } }, data: { quantity: amount(next) } });
+            await tx.branchStockBalance.update({ where: { branchId_productId: { branchId: receipt.branchId, productId: line.productId } }, data: { quantity: amount(next), revision: { increment: 1 } } });
             await tx.stockMovement.create({ data: { branchId: receipt.branchId, productId: line.productId, receiptId: id, sourceKey: `${receipt.sourceType === "REQUEST_RECEIVING" ? "request" : "manual"}:${id}:${line.productId}:reverse`, kind: "RECEIPT_REVERSAL", quantityDelta: amount(-quantity), businessDate: receipt.businessDate, actorId: user.id, originalMovementId: original.id, reason: reason.trim() } });
         }
         await tx.stockReceipt.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversedById: user.id, reversalReason: reason.trim(), version: { increment: 1 } } });
@@ -144,11 +144,11 @@ export async function stockOptions(user: CurrentUser) {
     ]);
     return { products, branches };
 }
-export async function stockList(user: CurrentUser, kind: "receipts" | "balances" | "movements", page: number, branchId?: string, productId?: string, sourceType?: "MANUAL_RECEIPT" | "REQUEST_RECEIVING") {
+export async function stockList(user: CurrentUser, kind: "receipts" | "balances" | "movements", page: number, branchId?: string, productId?: string, sourceType?: "MANUAL_RECEIPT" | "REQUEST_RECEIVING", showFinished = false) {
     const scope = stockScope(user, branchId), pageSize = 20;
     const pagination = { skip: (page - 1) * pageSize, take: pageSize };
     if (kind === "receipts") {
-        const where = { ...scope, ...(sourceType ? { sourceType } : {}), ...(productId ? { lines: { some: { productId } } } : {}) };
+        const where: Prisma.StockReceiptWhereInput = { ...scope, ...(!showFinished ? { status: "DRAFT" as const } : {}), ...(sourceType ? { sourceType } : {}), ...(productId ? { lines: { some: { productId } } } : {}) };
         const [items, totalItems] = await prisma.$transaction([
             prisma.stockReceipt.findMany({ where, ...pagination, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, businessDate: true, status: true, version: true, createdById: true, sourceType: true, sourceRequestId: true, branch: { select: { code: true } }, createdBy: identity, confirmedAt: true } }),
             prisma.stockReceipt.count({ where }),
@@ -166,7 +166,7 @@ export async function stockList(user: CurrentUser, kind: "receipts" | "balances"
     }
     const movementWhere = { ...where, ...(sourceType ? { receipt: { is: { sourceType } } } : {}) };
     const [items, totalItems] = await prisma.$transaction([
-        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { sourceType: true, sourceRequestId: true } } } }),
+        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { sourceType: true, sourceRequestId: true } }, stockCount: { select: { id: true, kind: true } } } }),
         prisma.stockMovement.count({ where: movementWhere }),
     ]);
     return { items, totalItems, page, pageSize };

@@ -1,9 +1,11 @@
+import { showFinishedQuery } from "@/lib/listVisibility";
 import { z } from "zod";
 import { RequestStatus } from "@/generated/prisma/enums";
 import { PaginationSchema } from "./querySchema";
 
 export const DailyRequestQuerySchema =
     PaginationSchema.extend({
+        showFinished: showFinishedQuery,
 
         status:
             z.nativeEnum(RequestStatus)
@@ -16,7 +18,6 @@ export const DailyRequestQuerySchema =
         createdById:
             z.uuid()
                 .optional(),
-
         sort:
             z.enum([
                 "businessDate",
@@ -32,18 +33,17 @@ export const DailyRequestQuerySchema =
                 "desc",
             ])
                 .default("desc"),
-
         search:
             z.string()
                 .trim()
                 .min(1)
                 .optional(),
-        
+
         completedAt:
             z.string()
                 .date() // Zod 3.23+ — validates "YYYY-MM-DD" format
                 .optional(),
-        
+
         assignedToId:
             z.uuid()
                 .optional(),
@@ -52,3 +52,4 @@ export const DailyRequestQuerySchema =
 
 export type DailyRequestQuery =
     z.infer<typeof DailyRequestQuerySchema>;
+

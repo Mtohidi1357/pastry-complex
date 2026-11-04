@@ -15,7 +15,7 @@ export async function postReceiptToStock(tx: Prisma.TransactionClient, receipt: 
         const current = await tx.branchStockBalance.findUnique({ where: { branchId_productId: key } });
         const next = minor(current?.quantity.toString() ?? "0") + quantity;
         if (next > BigInt("999999999999999999")) invalid("Stock balance exceeds its supported range.", 409);
-        await tx.branchStockBalance.upsert({ where: { branchId_productId: key }, create: { ...key, quantity: amount(next) }, update: { quantity: amount(next) } });
+        await tx.branchStockBalance.upsert({ where: { branchId_productId: key }, create: { ...key, quantity: amount(next), revision: 1 }, update: { quantity: amount(next), revision: { increment: 1 } } });
         await tx.stockMovement.create({ data: { ...key, receiptId: receipt.id, sourceKey: `${prefix}:${receipt.id}:${line.productId}:receive`, kind: "RECEIPT", quantityDelta: line.quantity, businessDate: receipt.businessDate, actorId, postedAt: now, reason: receipt.note } });
     }
 }

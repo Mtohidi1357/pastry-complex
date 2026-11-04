@@ -1,8 +1,9 @@
+import { parseShowFinished } from "@/lib/listVisibility";
 import { AppError } from "@/errors/AppError";
 import { ApiErrorCode } from "@/types/api";
 import { RequestStatus, type Prisma } from "@/generated/prisma/client";
 
-const fields = ["page", "branchId", "assignedToId", "status", "records", "from", "to"];
+const fields = ["page", "branchId", "assignedToId", "status", "records", "from", "to", "showFinished"];
 export function monitorFilters(params: URLSearchParams) {
     const invalid = () => new AppError(ApiErrorCode.VALIDATION_ERROR, "Invalid monitoring filters.", 400);
     for (const key of params.keys()) if (!fields.includes(key) || params.getAll(key).length !== 1) throw invalid();
@@ -10,7 +11,9 @@ export function monitorFilters(params: URLSearchParams) {
     if (!/^\d+$/.test(pageText)) throw invalid();
     const page = Number(pageText);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) throw invalid();
-    const where: Prisma.DailyRequestWhereInput = {};
+    const where: Prisma.DailyRequestWhereInput = parseShowFinished(params.get("showFinished")) ? {} : {
+        AND: [{ status: { notIn: [RequestStatus.CLOSED, RequestStatus.CANCELLED] } }, { deletedAt: null }],
+    };
     for (const key of ["branchId", "assignedToId"] as const) {
         const value = params.get(key);
         if (value) {

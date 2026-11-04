@@ -1,3 +1,4 @@
+import { showFinishedQuery } from "@/lib/listVisibility";
 import { z } from "zod";
 import { AppError } from "@/errors/AppError";
 import { ApiErrorCode } from "@/types/api";
@@ -26,5 +27,5 @@ export const createReceiptBody = receiptBody.extend({ clientRequestId: z.uuid() 
 export const saveReceiptBody = receiptBody.extend({ version: z.number().int().positive() });
 export const confirmReceiptBody = z.object({ version: z.number().int().positive() }).strict();
 export const reverseReceiptBody = confirmReceiptBody.extend({ reason: z.string().trim().min(5).max(1000) });
-export const stockQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).default(1), branchId: z.uuid().optional(), productId: z.uuid().optional(), sourceType: z.enum(["MANUAL_RECEIPT", "REQUEST_RECEIVING"]).optional() }).strict();
+export const stockQuery = z.object({ showFinished: showFinishedQuery, page: z.coerce.number().int().min(1).max(100_000).default(1), branchId: z.uuid().optional(), productId: z.uuid().optional(), sourceType: z.enum(["MANUAL_RECEIPT", "REQUEST_RECEIVING"]).optional() }).strict();
 export type ReceiptInput = z.infer<typeof receiptBody>;

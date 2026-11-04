@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     return stockHttp(req, user => {
         stockScope(user);
         const query = stockQuery.parse(Object.fromEntries(req.nextUrl.searchParams));
-        return stockList(user, "receipts", query.page, query.branchId, query.productId, query.sourceType);
+        return stockList(user, "receipts", query.page, query.branchId, query.productId, query.sourceType, query.showFinished);
     });
 }
 export async function POST(req: NextRequest) {
