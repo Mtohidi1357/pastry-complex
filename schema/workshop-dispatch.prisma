@@ -1,0 +1,83 @@
+enum WorkshopDeliveryStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  RETURNED
+  RESOLVED
+  CANCELLED
+}
+
+model WorkshopDelivery {
+  id String @id @default(uuid())
+  trackingNumber Int @unique @default(autoincrement())
+  clientRequestId String @unique
+  createHash String @db.Char(64)
+  sourceBranchId String
+  destinationBranchId String
+  sourceRequestId String? @unique
+  businessDate DateTime
+  status WorkshopDeliveryStatus @default(DRAFT)
+  version Int @default(1)
+  note String @db.Text
+  createdById String
+  dispatchedById String?
+  dispatchedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sourceBranch Branch @relation("DeliverySource", fields: [sourceBranchId], references: [id])
+  destinationBranch Branch @relation("DeliveryDestination", fields: [destinationBranchId], references: [id])
+  sourceRequest DailyRequest? @relation(fields: [sourceRequestId], references: [id], onDelete: Restrict)
+  createdBy User @relation("DeliveryCreator", fields: [createdById], references: [id])
+  dispatchedBy User? @relation("DeliveryDispatcher", fields: [dispatchedById], references: [id])
+  lines WorkshopDeliveryLine[]
+  events WorkshopDeliveryEvent[]
+  movements StockMovement[]
+  @@index([sourceBranchId, status, createdAt])
+  @@index([destinationBranchId, status, createdAt])
+  @@index([createdById])
+  @@index([dispatchedById])
+  @@map("workshop_deliveries")
+}
+
+model WorkshopDeliveryLine {
+  id String @id @default(uuid())
+  deliveryId String
+  productId String
+  quantity Decimal @db.Decimal(18, 3)
+  receivedQuantity Decimal @default(0) @db.Decimal(18, 3)
+  returnedQuantity Decimal @default(0) @db.Decimal(18, 3)
+  delivery WorkshopDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  @@unique([deliveryId, productId])
+  @@index([productId])
+  @@map("workshop_delivery_lines")
+}
+
+model WorkshopDeliveryEvent {
+  id String @id @default(uuid())
+  deliveryId String
+  actorId String
+  action String
+  version Int
+  clientRequestId String? @unique
+  payloadHash String? @db.Char(64)
+  note String @db.Text
+  payload Json
+  createdAt DateTime @default(now())
+  delivery WorkshopDelivery @relation(fields: [deliveryId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([deliveryId, createdAt])
+  @@index([actorId])
+  @@map("workshop_delivery_events")
+}
+
+model StockDocumentLease {
+  key String @id
+  ownerId String
+  token String
+  expiresAt DateTime
+  owner User @relation(fields: [ownerId], references: [id])
+  @@index([ownerId])
+  @@index([expiresAt])
+  @@map("stock_document_leases")
+}

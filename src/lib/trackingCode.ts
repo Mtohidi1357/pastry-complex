@@ -1,4 +1,4 @@
-export type TrackingKind = "REQ" | "RCV" | "CNT" | "USR" | "WST";
+export type TrackingKind = "REQ" | "RCV" | "CNT" | "USR" | "WST" | "WRK" | "DLV";
 type Tracked = { id?: string; trackingNumber?: number | null };
 // Padding is a minimum, not a limit: numbers above 999999 remain unique.
 export function trackingCode(kind: TrackingKind, record: Tracked): string {

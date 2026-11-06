@@ -1,3 +1,6 @@
+import { AppError } from "@/errors/AppError";
+import { ApiErrorCode } from "@/types/api";
+import { postRequestProduction } from "../workshop/requestProduction";
 import { postRequestReceiving } from "../stock/requestReceiving";
 import { dailyRequestRepository } from "@/features/dailyRequest/dailyRequestRepository";
 import type { Prisma } from "@/generated/prisma/client";
@@ -107,6 +110,8 @@ export async function transition(
 
         const updateData: Prisma.DailyRequestUpdateInput = { status: targetStatus };
         if (request.action === WorkflowAction.CANCEL_REQUEST) {
+            const delivery = await tx.workshopDelivery.findUnique({ where: { sourceRequestId: request.requestId } });
+            if (delivery?.status === "DISPATCHED") throw new AppError(ApiErrorCode.VALIDATION_ERROR, "Goods for this request are in transit. Confirm receiving or return the outstanding goods before cancelling the request.", 409);
             const cancellation = requestPolicy.canCancel({ request: dailyRequest, currentUser: request.currentUser });
             if (!cancellation.allowed) throw new PermissionDeniedError(cancellation.reason);
             // Cancellation ends the assignment; it has no next workflow user.
@@ -124,6 +129,9 @@ export async function transition(
         const closedAt = new Date();
         const stockReceiptId = request.action === WorkflowAction.CLOSE_REQUEST
             ? await postRequestReceiving(tx, dailyRequest, request.currentUser, closedAt)
+            : null;
+        const workshopReceiptId = request.action === WorkflowAction.COMPLETE_PRODUCTION
+            ? await postRequestProduction(tx, dailyRequest, request.currentUser, closedAt)
             : null;
         const timeStampedUpdate =
             await applyTransitionEffects(
@@ -171,11 +179,12 @@ export async function transition(
                 updatedRequest,
                 history,
                 stockReceiptId,
+                workshopReceiptId,
             };
     }, request.action !== WorkflowAction.START_PRODUCTION, (dailyRequest) => {
         if (request.action === WorkflowAction.CANCEL_REQUEST) {
             const permission = requestPolicy.canCancel({ request: dailyRequest, currentUser: request.currentUser });
             if (!permission.allowed) throw new PermissionDeniedError(permission.reason);
         }
-    }, request.action === WorkflowAction.CLOSE_REQUEST);
+    }, request.action === WorkflowAction.COMPLETE_PRODUCTION ? "WORKSHOP" : request.action === WorkflowAction.CLOSE_REQUEST);
 }

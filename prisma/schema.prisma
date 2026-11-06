@@ -27,6 +27,11 @@ model Branch {
 
   wasteCases WasteCase[]
 
+  workshopReceipts WorkshopReceipt[]
+
+  outgoingDeliveries WorkshopDelivery[] @relation("DeliverySource")
+  incomingDeliveries WorkshopDelivery[] @relation("DeliveryDestination")
+
   @@map("branches")
 }
 
@@ -79,6 +84,16 @@ model User {
   wasteReversed WasteCase[]      @relation("WasteReverser")
   wasteEvents   WasteCaseEvent[] @relation("WasteActor")
 
+  workshopCreated  WorkshopReceipt[]      @relation("WorkshopCreator")
+  workshopPosted   WorkshopReceipt[]      @relation("WorkshopPoster")
+  workshopReversed WorkshopReceipt[]      @relation("WorkshopReverser")
+  workshopEvents   WorkshopReceiptEvent[] @relation("WorkshopActor")
+
+  deliveriesCreated    WorkshopDelivery[]      @relation("DeliveryCreator")
+  deliveriesDispatched WorkshopDelivery[]      @relation("DeliveryDispatcher")
+  deliveryEvents       WorkshopDeliveryEvent[]
+  stockDocumentLeases  StockDocumentLease[]
+
   @@index([branchId])
   @@index([roleId])
   @@map("users")
@@ -130,6 +145,10 @@ model Product {
 
   wasteLines WasteCaseLine[]
 
+  workshopReceiptLines WorkshopReceiptLine[]
+
+  deliveryLines WorkshopDeliveryLine[]
+
   @@index([categoryId])
   @@map("products")
 }
@@ -161,6 +180,10 @@ model DailyRequest {
   editLease      RequestEditLease?
 
   stockReceipt StockReceipt? @relation("RequestStockReceipt")
+
+  workshopReceipt WorkshopReceipt? @relation("RequestWorkshopProduction")
+
+  workshopDelivery WorkshopDelivery?
 
   @@index([branchId, businessDate])
   @@index([status])
@@ -259,6 +282,11 @@ enum StockMovementKind {
   COUNT_ADJUSTMENT
   WASTE
   WASTE_REVERSAL
+  PRODUCTION
+  PRODUCTION_REVERSAL
+  DISPATCH
+  DELIVERY_RECEIVING
+  DISPATCH_RETURN
 }
 
 model StockReceipt {
@@ -351,12 +379,20 @@ model StockMovement {
   wasteId   String?
   wasteCase WasteCase? @relation(fields: [wasteId], references: [id], onDelete: Restrict)
 
+  workshopReceiptId String?
+  workshopReceipt   WorkshopReceipt? @relation(fields: [workshopReceiptId], references: [id], onDelete: Restrict)
+
+  deliveryId String?
+  delivery   WorkshopDelivery? @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+
   @@index([branchId, productId, postedAt])
   @@index([productId])
   @@index([receiptId])
   @@index([actorId])
   @@index([countId])
   @@index([wasteId])
+  @@index([workshopReceiptId])
+  @@index([deliveryId])
   @@map("stock_movements")
 }
 
@@ -545,4 +581,172 @@ model WasteCaseEvent {
   @@index([wasteId, createdAt])
   @@index([actorId])
   @@map("waste_case_events")
+}
+
+enum WorkshopReceiptSource {
+  MANUAL_PRODUCTION
+  REQUEST_PRODUCTION
+  OPENING_STOCK
+}
+
+enum WorkshopReceiptStatus {
+  DRAFT
+  POSTED
+  REVERSED
+  CANCELLED
+}
+
+model WorkshopReceipt {
+  id              String                 @id @default(uuid())
+  trackingNumber  Int                    @unique @default(autoincrement())
+  clientRequestId String                 @unique
+  createHash      String                 @db.Char(64)
+  branchId        String
+  businessDate    DateTime
+  sourceType      WorkshopReceiptSource
+  sourceRequestId String?                @unique
+  status          WorkshopReceiptStatus  @default(DRAFT)
+  version         Int                    @default(1)
+  note            String                 @db.Text
+  createdById     String
+  postedById      String?
+  reversedById    String?
+  postedAt        DateTime?
+  reversedAt      DateTime?
+  cancelledAt     DateTime?
+  reversalReason  String?                @db.Text
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  branch          Branch                 @relation(fields: [branchId], references: [id])
+  sourceRequest   DailyRequest?          @relation("RequestWorkshopProduction", fields: [sourceRequestId], references: [id], onDelete: Restrict)
+  createdBy       User                   @relation("WorkshopCreator", fields: [createdById], references: [id])
+  postedBy        User?                  @relation("WorkshopPoster", fields: [postedById], references: [id])
+  reversedBy      User?                  @relation("WorkshopReverser", fields: [reversedById], references: [id])
+  lines           WorkshopReceiptLine[]
+  events          WorkshopReceiptEvent[]
+  movements       StockMovement[]
+
+  @@index([branchId, createdAt])
+  @@index([createdById])
+  @@index([postedById])
+  @@index([reversedById])
+  @@map("workshop_receipts")
+}
+
+model WorkshopReceiptLine {
+  id        String          @id @default(uuid())
+  receiptId String
+  productId String
+  quantity  Decimal         @db.Decimal(18, 3)
+  receipt   WorkshopReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id])
+
+  @@unique([receiptId, productId])
+  @@index([productId])
+  @@map("workshop_receipt_lines")
+}
+
+model WorkshopReceiptEvent {
+  id        String          @id @default(uuid())
+  receiptId String
+  actorId   String
+  action    String
+  version   Int
+  note      String?         @db.Text
+  payload   Json
+  createdAt DateTime        @default(now())
+  receipt   WorkshopReceipt @relation(fields: [receiptId], references: [id])
+  actor     User            @relation("WorkshopActor", fields: [actorId], references: [id])
+
+  @@index([receiptId, createdAt])
+  @@index([actorId])
+  @@map("workshop_receipt_events")
+}
+
+enum WorkshopDeliveryStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  RETURNED
+  RESOLVED
+  CANCELLED
+}
+
+model WorkshopDelivery {
+  id                  String                  @id @default(uuid())
+  trackingNumber      Int                     @unique @default(autoincrement())
+  clientRequestId     String                  @unique
+  createHash          String                  @db.Char(64)
+  sourceBranchId      String
+  destinationBranchId String
+  sourceRequestId     String?                 @unique
+  businessDate        DateTime
+  status              WorkshopDeliveryStatus  @default(DRAFT)
+  version             Int                     @default(1)
+  note                String                  @db.Text
+  createdById         String
+  dispatchedById      String?
+  dispatchedAt        DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  sourceBranch        Branch                  @relation("DeliverySource", fields: [sourceBranchId], references: [id])
+  destinationBranch   Branch                  @relation("DeliveryDestination", fields: [destinationBranchId], references: [id])
+  sourceRequest       DailyRequest?           @relation(fields: [sourceRequestId], references: [id], onDelete: Restrict)
+  createdBy           User                    @relation("DeliveryCreator", fields: [createdById], references: [id])
+  dispatchedBy        User?                   @relation("DeliveryDispatcher", fields: [dispatchedById], references: [id])
+  lines               WorkshopDeliveryLine[]
+  events              WorkshopDeliveryEvent[]
+  movements           StockMovement[]
+
+  @@index([sourceBranchId, status, createdAt])
+  @@index([destinationBranchId, status, createdAt])
+  @@index([createdById])
+  @@index([dispatchedById])
+  @@map("workshop_deliveries")
+}
+
+model WorkshopDeliveryLine {
+  id               String           @id @default(uuid())
+  deliveryId       String
+  productId        String
+  quantity         Decimal          @db.Decimal(18, 3)
+  receivedQuantity Decimal          @default(0) @db.Decimal(18, 3)
+  returnedQuantity Decimal          @default(0) @db.Decimal(18, 3)
+  delivery         WorkshopDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  product          Product          @relation(fields: [productId], references: [id])
+
+  @@unique([deliveryId, productId])
+  @@index([productId])
+  @@map("workshop_delivery_lines")
+}
+
+model WorkshopDeliveryEvent {
+  id              String           @id @default(uuid())
+  deliveryId      String
+  actorId         String
+  action          String
+  version         Int
+  clientRequestId String?          @unique
+  payloadHash     String?          @db.Char(64)
+  note            String           @db.Text
+  payload         Json
+  createdAt       DateTime         @default(now())
+  delivery        WorkshopDelivery @relation(fields: [deliveryId], references: [id])
+  actor           User             @relation(fields: [actorId], references: [id])
+
+  @@index([deliveryId, createdAt])
+  @@index([actorId])
+  @@map("workshop_delivery_events")
+}
+
+model StockDocumentLease {
+  key       String   @id
+  ownerId   String
+  token     String
+  expiresAt DateTime
+  owner     User     @relation(fields: [ownerId], references: [id])
+
+  @@index([ownerId])
+  @@index([expiresAt])
+  @@map("stock_document_leases")
 }

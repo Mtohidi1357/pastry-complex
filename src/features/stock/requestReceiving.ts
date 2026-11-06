@@ -1,3 +1,4 @@
+import { linkRequestDeliveryReceiving } from "../delivery/requestDeliveryReceiving";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import type { CurrentUser } from "../auth/authTypes";
@@ -35,6 +36,7 @@ export async function postRequestReceiving(tx: Prisma.TransactionClient, request
         businessDate: request.businessDate, status: "CONFIRMED", createdById: user.id, confirmedById: user.id,
         confirmedAt: now, note: `Final receiving for request ${request.id}.`, lines: { create: lines },
     } });
-    await postReceiptToStock(tx, { ...receipt, lines }, user.id, now);
+    const deliveryId = await linkRequestDeliveryReceiving(tx, request, user, receipt.id);
+    await postReceiptToStock(tx, { ...receipt, deliveryId, lines }, user.id, now);
     return receipt.id;
 }

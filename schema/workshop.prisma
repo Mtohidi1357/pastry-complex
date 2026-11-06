@@ -1,0 +1,72 @@
+enum WorkshopReceiptSource {
+  MANUAL_PRODUCTION
+  REQUEST_PRODUCTION
+  OPENING_STOCK
+}
+enum WorkshopReceiptStatus {
+  DRAFT
+  POSTED
+  REVERSED
+  CANCELLED
+}
+model WorkshopReceipt {
+  id String @id @default(uuid())
+  trackingNumber Int @unique @default(autoincrement())
+  clientRequestId String @unique
+  createHash String @db.Char(64)
+  branchId String
+  businessDate DateTime
+  sourceType WorkshopReceiptSource
+  sourceRequestId String? @unique
+  status WorkshopReceiptStatus @default(DRAFT)
+  version Int @default(1)
+  note String @db.Text
+  createdById String
+  postedById String?
+  reversedById String?
+  postedAt DateTime?
+  reversedAt DateTime?
+  cancelledAt DateTime?
+  reversalReason String? @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branch Branch @relation(fields: [branchId], references: [id])
+  sourceRequest DailyRequest? @relation("RequestWorkshopProduction", fields: [sourceRequestId], references: [id], onDelete: Restrict)
+  createdBy User @relation("WorkshopCreator", fields: [createdById], references: [id])
+  postedBy User? @relation("WorkshopPoster", fields: [postedById], references: [id])
+  reversedBy User? @relation("WorkshopReverser", fields: [reversedById], references: [id])
+  lines WorkshopReceiptLine[]
+  events WorkshopReceiptEvent[]
+  movements StockMovement[]
+  @@index([branchId, createdAt])
+  @@index([createdById])
+  @@index([postedById])
+  @@index([reversedById])
+  @@map("workshop_receipts")
+}
+model WorkshopReceiptLine {
+  id String @id @default(uuid())
+  receiptId String
+  productId String
+  quantity Decimal @db.Decimal(18, 3)
+  receipt WorkshopReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  @@unique([receiptId, productId])
+  @@index([productId])
+  @@map("workshop_receipt_lines")
+}
+model WorkshopReceiptEvent {
+  id String @id @default(uuid())
+  receiptId String
+  actorId String
+  action String
+  version Int
+  note String? @db.Text
+  payload Json
+  createdAt DateTime @default(now())
+  receipt WorkshopReceipt @relation(fields: [receiptId], references: [id])
+  actor User @relation("WorkshopActor", fields: [actorId], references: [id])
+  @@index([receiptId, createdAt])
+  @@index([actorId])
+  @@map("workshop_receipt_events")
+}

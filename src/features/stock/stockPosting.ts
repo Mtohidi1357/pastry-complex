@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { amount, invalid, minor } from "./stockValidation";
 
-type Posting = { id: string; branchId: string; businessDate: Date; note: string | null; sourceType: string;
+type Posting = { deliveryId?: string | null; id: string; branchId: string; businessDate: Date; note: string | null; sourceType: string;
     lines: { productId: string; quantity: string }[] };
 // Internal transactional operation, not an API. Caller authorizes the actor and
 // locks the branch before request/receipt rows. Never start a nested transaction.
@@ -16,6 +16,6 @@ export async function postReceiptToStock(tx: Prisma.TransactionClient, receipt: 
         const next = minor(current?.quantity.toString() ?? "0") + quantity;
         if (next > BigInt("999999999999999999")) invalid("Stock balance exceeds its supported range.", 409);
         await tx.branchStockBalance.upsert({ where: { branchId_productId: key }, create: { ...key, quantity: amount(next), revision: 1 }, update: { quantity: amount(next), revision: { increment: 1 } } });
-        await tx.stockMovement.create({ data: { ...key, receiptId: receipt.id, sourceKey: `${prefix}:${receipt.id}:${line.productId}:receive`, kind: "RECEIPT", quantityDelta: line.quantity, businessDate: receipt.businessDate, actorId, postedAt: now, reason: receipt.note } });
+        await tx.stockMovement.create({ data: { ...key, receiptId: receipt.id, ...(receipt.deliveryId ? { deliveryId: receipt.deliveryId } : {}), sourceKey: `${prefix}:${receipt.id}:${line.productId}:receive`, kind: "RECEIPT", quantityDelta: line.quantity, businessDate: receipt.businessDate, actorId, postedAt: now, reason: receipt.note } });
     }
 }

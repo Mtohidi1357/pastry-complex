@@ -1,4 +1,5 @@
 "use client";
+import DeliveryTaskQueue from "../delivery/DeliveryTaskQueue";
 import CountTaskQueue from "./CountTaskQueue";
 import { WasteTaskQueue } from "../waste/WasteWorkspace";
 import { trackingCode } from "@/lib/trackingCode";
@@ -116,6 +117,7 @@ export default function InboxForm() {
     const router = useRouter();
     const handleSubformClose = async () => {
         setSelectedRequestId(null);
+        setCountRefresh(value => value + 1);
         setWorkFlowAction(null);
         await loadInbox();
     };
@@ -216,7 +218,7 @@ useEffect(() => {
                     <div className="flex flex-wrap items-center gap-3">
                         <button type="button" disabled={loading || !token || countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => { setCountRefresh(value => value + 1); void loadInbox(); }}
                             className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Refresh inbox</button>
-                        {canCreateRequests(user?.role?.code) && <button type="button" disabled={countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => router.push("/daily-request")}
+                        {canCreateRequests(user?.role?.code) && user?.branch?.type !== "BAKERY" && <button type="button" disabled={countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => router.push("/daily-request")}
                             className="min-h-10 rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white hover:bg-amber-950">+ New Request</button>}
                     </div>
                 </header>
@@ -228,6 +230,7 @@ useEffect(() => {
                     <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
                     Show finished items
                 </label>
+                {token && ["INV", "WM", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <DeliveryTaskQueue token={token} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
                 {user?.role?.code === "BM" && token && <CountTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || wasteEditorOpen} onEditorChange={setCountEditorOpen} />}
                 {user?.role?.code === "BM" && token && <WasteTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen} onEditorChange={setWasteEditorOpen} />}
                 <fieldset disabled={countEditorOpen || wasteEditorOpen} className="m-0 min-w-0 border-0 p-0">
@@ -439,6 +442,7 @@ useEffect(() => {
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
+        setCountRefresh(value => value + 1);
                                                         await loadInbox();
                                                     }}
                                                 /></InventoryPanel>
@@ -462,6 +466,7 @@ useEffect(() => {
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
+        setCountRefresh(value => value + 1);
                                                         await loadInbox();
                                                     }}
                                                 />
@@ -485,6 +490,7 @@ useEffect(() => {
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
+        setCountRefresh(value => value + 1);
                                                         await loadInbox();
                                                     }}
                                                 />
@@ -508,6 +514,7 @@ useEffect(() => {
                                                     onSaved={loadInbox}
                                                     onSubmitted={async () => {
                                                         setSelectedRequestId(null);
+        setCountRefresh(value => value + 1);
                                                         await loadInbox();
                                                     }}
                                                 /></div>
