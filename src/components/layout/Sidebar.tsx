@@ -11,9 +11,10 @@ import { canViewStock } from "@/features/stock/stockPolicy";
 import styles from "./Sidebar.module.css";
 
 type Props = { isOpen: boolean; onClose: () => void };
-type SymbolName = "workshop" | "waste" | "count" | "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
+type SymbolName = "return" | "workshop" | "waste" | "count" | "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
 function SidebarIcon({ name }: { name: SymbolName }) {
     const paths: Record<SymbolName, string> = {
+        return: "M9 4 4 9l5 5 M4 9h10a6 6 0 0 1 0 12h-3",
         workshop: "M3 21V9l6-3v5l6-4v4l6-3v13H3 M6 15h3 M12 15h3 M17 15h2 M6 18h3 M12 18h3 M17 18h2",
         waste: "M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11l4 6 M14 11l-4 6",
         count: "M8 5H5v16h14V5h-3 M9 3h6v4H9z M8 11l1 1 2-2 M13 11h3 M8 16l1 1 2-2 M13 16h3",
@@ -42,9 +43,11 @@ export default function Sidebar({ isOpen, onClose }: Props) {
     const roleNames: Record<string, string> = { ADMIN: "Administrator", BM: "Branch manager", INV: "Inventory", WM: "Workshop manager" };
     const links: { href: string; label: string; icon: SymbolName }[] = [
         { href: "/dashboard/inbox", label: "Inbox", icon: "inbox" },
-        ...(canViewStock(user?.roleCode) ? [{ href: "/dashboard/stock", label: "Receiving & stock", icon: "stock" as const }, ...(branchType === "BAKERY" ? [] : [{ href: "/dashboard/stock-counts", label: "Physical stock counts", icon: "count" as const }, { href: "/dashboard/waste", label: "Waste & damage", icon: "waste" as const }])] : []),
+        ...(canViewStock(user?.roleCode) ? [{ href: "/dashboard/stock", label: "Receiving & stock", icon: "stock" as const }, ...(branchType === "BAKERY" ? [] : [{ href: "/dashboard/waste", label: "Waste & damage", icon: "waste" as const }])] : []),
         ...((["WM", "ADMIN"].includes(user?.roleCode ?? "") || (user?.roleCode === "INV" && branchType === "BAKERY")) ? [{ href: "/dashboard/workshop-stock", label: "Workshop stock", icon: "workshop" as const }] : []),
         ...(["WM", "INV", "BM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/deliveries", label: "Deliveries & transit", icon: "stock" as const }] : []),
+        ...(["INV", "BM", "WM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/stock-counts", label: "Physical stock counts", icon: "count" as const }] : []),
+        ...(["INV", "BM", "WM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/returns", label: "Product returns", icon: "return" as const }, { href: user?.roleCode === "ADMIN" ? "/dashboard/inventory-monitor" : "/dashboard/inventory", label: user?.roleCode === "ADMIN" ? "Inventory Monitor" : "Inventory & transit", icon: "monitor" as const }] : []),
         ...(user?.roleCode === "ADMIN" ? [{ href: "/dashboard/monitor", label: "Request Monitor", icon: "monitor" as const }, { href: "/dashboard/products", label: "Products", icon: "catalog" as const }] : []),
         ...(canRestoreRequests(user?.roleCode) ? [{ href: "/dashboard/trash", label: "Deleted requests", icon: "trash" as const }] : []),
     ];

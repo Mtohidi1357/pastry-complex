@@ -1,4 +1,5 @@
 "use client";
+import ReturnTaskQueue from "../returns/ReturnTaskQueue";
 import DeliveryTaskQueue from "../delivery/DeliveryTaskQueue";
 import CountTaskQueue from "./CountTaskQueue";
 import { WasteTaskQueue } from "../waste/WasteWorkspace";
@@ -213,7 +214,7 @@ useEffect(() => {
                         </button>
                         <div><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Branch operations</p>
                             <h1 className="mt-1 text-2xl font-semibold text-[#39291f]">Your Inbox</h1>
-                            <p className="mt-1 text-sm text-slate-600">{user?.role?.code === "BM" ? "Daily requests assigned to you, plus stock counts and waste cases awaiting your branch’s approval." : "Requests assigned to you, ready for the next step."}</p></div>
+                            <p className="mt-1 text-sm text-slate-600">{user?.role?.code === "BM" ? "Daily requests assigned to you, plus stock counts and waste cases awaiting your branch’s approval." : user?.role?.code === "WM" ? "Production requests and physical stock counts awaiting your workshop’s review." : "Requests assigned to you, ready for the next step."}</p></div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <button type="button" disabled={loading || !token || countEditorOpen || wasteEditorOpen || selectedRequestId !== null} onClick={() => { setCountRefresh(value => value + 1); void loadInbox(); }}
@@ -230,8 +231,9 @@ useEffect(() => {
                     <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
                     Show finished items
                 </label>
+                {token && ["INV", "WM", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <ReturnTaskQueue token={token} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
                 {token && ["INV", "WM", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <DeliveryTaskQueue token={token} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
-                {user?.role?.code === "BM" && token && <CountTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || wasteEditorOpen} onEditorChange={setCountEditorOpen} />}
+                {["BM", "WM"].includes(user?.role?.code ?? "") && token && <CountTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || wasteEditorOpen} onEditorChange={setCountEditorOpen} />}
                 {user?.role?.code === "BM" && token && <WasteTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen} onEditorChange={setWasteEditorOpen} />}
                 <fieldset disabled={countEditorOpen || wasteEditorOpen} className="m-0 min-w-0 border-0 p-0">
                 {user?.role?.code === "BM" && <h2 className="mb-3 text-lg font-semibold text-[#39291f]">Daily requests</h2>}

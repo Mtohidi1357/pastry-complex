@@ -4,24 +4,22 @@ import type { CurrentUser } from "../auth/authTypes";
 import { PermissionDeniedError } from "@/errors/PermissionDeniedError";
 import { AppError } from "@/errors/AppError";
 import { ApiErrorCode } from "@/types/api";
-import { stockScope } from "./stockPolicy";
+import { countScope, countActor, requireCountRole } from "./countPolicy";
 import { amount, businessDate, invalid, minor } from "./stockValidation";
 import type { StartCountInput, SaveCountInput } from "./countValidation";
 
 type Tx = Prisma.TransactionClient;
 const identity = { select: { id: true, trackingNumber: true, username: true } } as const;
-const detail = { branch: { select: { id: true, code: true, name: true } }, createdBy: identity, approvedBy: identity,
+const detail = { branch: { select: { id: true, code: true, name: true, type: true } }, createdBy: identity, approvedBy: identity,
     lines: { orderBy: { productId: "asc" as const }, include: { product: { select: { id: true, code: true, displayName: true, unit: true } } } },
     events: { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }], include: { actor: identity } },
 } satisfies Prisma.StockCountInclude;
 function missing(): never { throw new AppError(ApiErrorCode.NOT_FOUND, "Stock count not found.", 404); }
 export function countRole(user: CurrentUser, role: "INV" | "BM") {
-    if (user.roleCode !== role || !user.branchId) throw new PermissionDeniedError(role === "INV" ? "Only inventory users can enter stock counts." : "Only branch managers can approve or return counts.");
+    requireCountRole(user, role === "INV" ? "enter" : "review");
 }
 async function actor(tx: Tx, user: CurrentUser, role: "INV" | "BM") {
-    const account = await tx.user.findFirst({ where: { id: user.id, branchId: user.branchId, isActive: true, role: { is: { code: role } } }, select: { id: true } });
-    const branch = await tx.branch.findUnique({ where: { id: user.branchId }, select: { isActive: true, type: true } });
-    if (!account || !branch?.isActive || branch.type !== "SALES") throw new PermissionDeniedError("An active account and sales branch are required.");
+    return countActor(tx, user, role === "INV" ? "enter" : "review");
 }
 async function branchLock(tx: Tx, id: string) { const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM branches WHERE id = ${id} FOR UPDATE`; if (!rows.length) missing(); }
 function view(tx: Tx, id: string) { return tx.stockCount.findUniqueOrThrow({ where: { id }, include: detail }); }
@@ -47,26 +45,28 @@ async function fresh(tx: Tx, count: { branchId: string; lines: { productId: stri
 async function locked<T>(user: CurrentUser, id: string, role: "INV" | "BM", operation: (tx: Tx) => Promise<T>) {
     countRole(user, role);
     const initial = await prisma.stockCount.findUnique({ where: { id }, select: { branchId: true } });
-    if (!initial) missing(); stockScope(user, initial.branchId);
+    if (!initial) missing(); countScope(user, initial.branchId);
     return prisma.$transaction(async tx => {
         await branchLock(tx, user.branchId);
         const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM stock_counts WHERE id = ${id} FOR UPDATE`;
         if (!rows.length) missing(); await actor(tx, user, role);
         return operation(tx);
-    }, { timeout: 15_000 });
+    }, { timeout: 15_000, isolationLevel: "ReadCommitted" });
 }
 async function current(tx: Tx, id: string, user: CurrentUser) {
     const count = await tx.stockCount.findUnique({ where: { id }, include: { lines: { include: { product: { select: { unit: true } } } } } });
-    if (!count) missing(); stockScope(user, count.branchId);
+    if (!count) missing(); countScope(user, count.branchId);
     if (user.roleCode === "INV" && count.createdById !== user.id) throw new PermissionDeniedError("Only the inventory user who started this count can edit or submit it.");
     return count;
 }
-function version(actual: number, expected: number) { if (actual !== expected) invalid("Count changed in another page. Close and reopen it before continuing.", 409); }
+function version(actual: number, expected: number) { if (!Number.isSafeInteger(expected) || expected < 1 || actual !== expected) invalid("Count changed in another page. Close and reopen it before continuing.", 409); }
 export async function startCount(user: CurrentUser, input: StartCountInput) {
     countRole(user, "INV"); const date = businessDate(input.businessDate);
     if (!input.productIds.length || input.productIds.length > 200 || new Set(input.productIds).size !== input.productIds.length) invalid("Choose between 1 and 200 distinct products.");
     return prisma.$transaction(async tx => {
-        await branchLock(tx, user.branchId); await actor(tx, user, "INV");
+        await branchLock(tx, user.branchId);
+        const location = await actor(tx, user, "INV");
+        if (location?.type === "BAKERY" && input.kind !== "COUNT") invalid("Use Physical count for workshop reconciliation. New workshop opening stock remains on Workshop stock.", 409);
         const existing = await tx.stockCount.findUnique({ where: { clientRequestId: input.clientRequestId }, include: { lines: true } });
         if (existing) {
             if (existing.createdById !== user.id || existing.branchId !== user.branchId) throw new PermissionDeniedError("This count belongs to another user.");
@@ -83,7 +83,7 @@ export async function startCount(user: CurrentUser, input: StartCountInput) {
         const count = await tx.stockCount.create({ data: { clientRequestId: input.clientRequestId, branchId: user.branchId, kind: input.kind, businessDate: date, createdById: user.id, lines: { create: lines } } });
         await event(tx, count.id, user, "STARTED", 1);
         return view(tx, count.id);
-    }, { timeout: 15_000 });
+    }, { timeout: 15_000, isolationLevel: "ReadCommitted" });
 }
 export async function saveCount(user: CurrentUser, id: string, input: SaveCountInput) {
     return locked(user, id, "INV", async tx => {
@@ -131,7 +131,7 @@ export async function submitCount(user: CurrentUser, id: string, expectedVersion
     });
 }
 export async function decideCount(user: CurrentUser, id: string, expectedVersion: number, reason: string, approve: boolean) {
-    countRole(user, "BM"); if (reason.trim().length < 5) invalid("Enter a decision reason of at least five characters.");
+    countRole(user, "BM"); if (reason.trim().length < 5 || reason.trim().length > 1000) invalid("Enter a decision reason of 5 to 1000 characters.");
     return locked(user, id, "BM", async tx => {
         const count = await current(tx, id, user);
         if (count.createdById === user.id) throw new PermissionDeniedError("A different manager must approve this count.");
@@ -143,6 +143,7 @@ export async function decideCount(user: CurrentUser, id: string, expectedVersion
             await event(tx, id, user, "RETURNED", count.version + 1, reason.trim());
             return view(tx, id);
         }
+        if (user.roleCode === "WM" && count.kind !== "COUNT") invalid("Workshop reconciliation must use a physical count.", 409);
         await fresh(tx, count);
         if (!count.lines.length || count.lines.some(line => line.countedQuantity === null)) invalid("The submitted count is incomplete.", 409);
         const now = new Date();
@@ -150,6 +151,7 @@ export async function decideCount(user: CurrentUser, id: string, expectedVersion
             if (count.kind === "OPENING") await openingAllowed(tx, count.branchId, line.productId);
             if (line.countedQuantity === null) invalid("A physical quantity is missing.", 409);
             const quantity = minor(line.countedQuantity.toString());
+            if (quantity > BigInt("999999999999999999")) invalid("Physical quantity exceeds its supported range.", 409);
             if ((line.product.unit === "PCS" || line.product.unit === "BOX") && quantity % BigInt(1000) !== BigInt(0)) invalid("A product unit changed. Return this count for correction.", 409);
             const delta = quantity - minor(line.expectedQuantity.toString());
             if (delta === BigInt(0)) continue;
@@ -163,22 +165,34 @@ export async function decideCount(user: CurrentUser, id: string, expectedVersion
     });
 }
 export async function countDetail(user: CurrentUser, id: string) {
-    stockScope(user); const count = await prisma.stockCount.findUnique({ where: { id }, include: detail });
-    if (!count) missing(); stockScope(user, count.branchId); return count;
+    countScope(user);
+    return prisma.$transaction(async tx => {
+        await countActor(tx, user);
+        const count = await tx.stockCount.findUnique({ where: { id }, include: detail });
+        if (!count) missing(); countScope(user, count.branchId); return count;
+    });
 }
 export async function listCounts(user: CurrentUser, page: number, branchId?: string, showFinished = false) {
-    const where: Prisma.StockCountWhereInput = { ...stockScope(user, branchId), ...(!showFinished ? { status: { not: "APPROVED" as const } } : {}) }, pageSize = 20;
-    const [items, totalItems] = await prisma.$transaction([
-        prisma.stockCount.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, trackingNumber: true, kind: true, status: true, businessDate: true, version: true, createdBy: identity, branch: { select: { code: true } } } }),
-        prisma.stockCount.count({ where }),
-    ]);
-    return { items, totalItems, page, pageSize };
+    if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) invalid("Invalid count page.");
+    const scope = countScope(user, branchId), pageSize = 20;
+    return prisma.$transaction(async tx => {
+        await countActor(tx, user);
+        const where: Prisma.StockCountWhereInput = { ...scope, branch: { is: { type: { in: ["SALES", "BAKERY"] } } }, ...(!showFinished ? { status: { not: "APPROVED" } } : {}) };
+        const [items, totalItems] = await Promise.all([
+            tx.stockCount.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true, trackingNumber: true, kind: true, status: true, businessDate: true, version: true, createdBy: identity, branch: { select: { code: true, type: true } } } }),
+            tx.stockCount.count({ where }),
+        ]);
+        return { items, totalItems, page, pageSize };
+    }, { isolationLevel: "RepeatableRead" });
 }
 export async function countOptions(user: CurrentUser) {
-    const scope = stockScope(user);
-    const [products, branches] = await prisma.$transaction([
-        prisma.product.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, displayName: true, unit: true, isActive: true } }),
-        prisma.branch.findMany({ where: scope.branchId ? { id: scope.branchId } : {}, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
-    ]);
-    return { products, branches };
+    const scope = countScope(user);
+    return prisma.$transaction(async tx => {
+        const location = await countActor(tx, user);
+        const [products, branches] = await Promise.all([
+            tx.product.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, displayName: true, unit: true, isActive: true } }),
+            tx.branch.findMany({ where: { ...(scope.branchId ? { id: scope.branchId } : {}), type: { in: ["SALES", "BAKERY"] } }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true, type: true } }),
+        ]);
+        return { products, branches, locationType: user.roleCode === "ADMIN" ? null : location?.type, canStart: user.roleCode === "INV", allowOpening: user.roleCode === "INV" && location?.type === "SALES" };
+    });
 }

@@ -32,6 +32,9 @@ model Branch {
   outgoingDeliveries WorkshopDelivery[] @relation("DeliverySource")
   incomingDeliveries WorkshopDelivery[] @relation("DeliveryDestination")
 
+  returnsSent     StockReturn[] @relation("ReturnSource")
+  returnsReceived StockReturn[] @relation("ReturnDestination")
+
   @@map("branches")
 }
 
@@ -94,6 +97,10 @@ model User {
   deliveryEvents       WorkshopDeliveryEvent[]
   stockDocumentLeases  StockDocumentLease[]
 
+  returnsCreated    StockReturn[]      @relation("ReturnCreator")
+  returnsDispatched StockReturn[]      @relation("ReturnDispatcher")
+  returnEvents      StockReturnEvent[]
+
   @@index([branchId])
   @@index([roleId])
   @@map("users")
@@ -149,6 +156,8 @@ model Product {
 
   deliveryLines WorkshopDeliveryLine[]
 
+  stockReturnLines StockReturnLine[]
+
   @@index([categoryId])
   @@map("products")
 }
@@ -184,6 +193,8 @@ model DailyRequest {
   workshopReceipt WorkshopReceipt? @relation("RequestWorkshopProduction")
 
   workshopDelivery WorkshopDelivery?
+
+  stockReturns StockReturn[]
 
   @@index([branchId, businessDate])
   @@index([status])
@@ -287,6 +298,9 @@ enum StockMovementKind {
   DISPATCH
   DELIVERY_RECEIVING
   DISPATCH_RETURN
+  RETURN_DISPATCH
+  RETURN_RECEIVING
+  RETURN_RESTORE
 }
 
 model StockReceipt {
@@ -385,6 +399,9 @@ model StockMovement {
   deliveryId String?
   delivery   WorkshopDelivery? @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
 
+  returnId    String?
+  stockReturn StockReturn? @relation(fields: [returnId], references: [id], onDelete: Restrict)
+
   @@index([branchId, productId, postedAt])
   @@index([productId])
   @@index([receiptId])
@@ -393,6 +410,7 @@ model StockMovement {
   @@index([wasteId])
   @@index([workshopReceiptId])
   @@index([deliveryId])
+  @@index([returnId])
   @@map("stock_movements")
 }
 
@@ -749,4 +767,82 @@ model StockDocumentLease {
   @@index([ownerId])
   @@index([expiresAt])
   @@map("stock_document_leases")
+}
+
+enum StockReturnStatus {
+  DRAFT
+  SUBMITTED
+  DISPATCHED
+  RECEIVED
+  RESTORED
+  RESOLVED
+  CANCELLED
+}
+
+model StockReturn {
+  id                  String             @id @default(uuid())
+  trackingNumber      Int                @unique @default(autoincrement())
+  clientRequestId     String             @unique
+  createHash          String             @db.Char(64)
+  sourceBranchId      String
+  destinationBranchId String
+  sourceRequestId     String?
+  businessDate        DateTime
+  status              StockReturnStatus  @default(DRAFT)
+  version             Int                @default(1)
+  note                String             @db.Text
+  createdById         String
+  dispatchedById      String?
+  dispatchedAt        DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  sourceBranch        Branch             @relation("ReturnSource", fields: [sourceBranchId], references: [id])
+  destinationBranch   Branch             @relation("ReturnDestination", fields: [destinationBranchId], references: [id])
+  sourceRequest       DailyRequest?      @relation(fields: [sourceRequestId], references: [id], onDelete: Restrict)
+  createdBy           User               @relation("ReturnCreator", fields: [createdById], references: [id])
+  dispatchedBy        User?              @relation("ReturnDispatcher", fields: [dispatchedById], references: [id])
+  lines               StockReturnLine[]
+  events              StockReturnEvent[]
+  movements           StockMovement[]
+
+  @@index([sourceBranchId, status, createdAt])
+  @@index([destinationBranchId, status, createdAt])
+  @@index([sourceRequestId])
+  @@index([createdById])
+  @@index([dispatchedById])
+  @@map("stock_returns")
+}
+
+model StockReturnLine {
+  id               String      @id @default(uuid())
+  returnId         String
+  productId        String
+  quantity         Decimal     @db.Decimal(18, 3)
+  receivedQuantity Decimal     @default(0) @db.Decimal(18, 3)
+  restoredQuantity Decimal     @default(0) @db.Decimal(18, 3)
+  returnCase       StockReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product          Product     @relation(fields: [productId], references: [id])
+
+  @@unique([returnId, productId])
+  @@index([productId])
+  @@map("stock_return_lines")
+}
+
+model StockReturnEvent {
+  id              String      @id @default(uuid())
+  returnId        String
+  actorId         String
+  action          String
+  version         Int
+  clientRequestId String?     @unique
+  payloadHash     String?     @db.Char(64)
+  note            String      @db.Text
+  payload         Json
+  createdAt       DateTime    @default(now())
+  returnCase      StockReturn @relation(fields: [returnId], references: [id])
+  actor           User        @relation(fields: [actorId], references: [id])
+
+  @@index([returnId, createdAt])
+  @@index([actorId])
+  @@map("stock_return_events")
 }

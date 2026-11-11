@@ -111,6 +111,7 @@ export async function reverseReceipt(user: CurrentUser, id: string, version: num
     if (reason.trim().length < 5) invalid("Enter a reversal reason of at least five characters.");
     return locked(user, id, "reverse", async tx => {
         const receipt = await owned(tx, id, user);
+        if (receipt.sourceRequestId && await tx.stockReturn.findFirst({ where: { sourceRequestId: receipt.sourceRequestId, status: { notIn: ["DRAFT", "CANCELLED"] } } })) invalid("A submitted or processed stock return depends on this receiving record. Ordinary receipt reversal is blocked; use the audited return workflow.", 409);
         if (receipt.sourceRequestId && await tx.workshopDelivery.findUnique({ where: { sourceRequestId: receipt.sourceRequestId } })) invalid("This receipt belongs to a workshop transfer. An ordinary receipt reversal would break the delivery totals. Use a separately audited physical return/correction instead.", 409);
         if (receipt.status === "REVERSED") return view(tx, id);
         if (receipt.status !== "CONFIRMED") invalid("Only confirmed receipts can be reversed.", 409);
@@ -168,7 +169,7 @@ export async function stockList(user: CurrentUser, kind: "receipts" | "balances"
     }
     const movementWhere = { ...where, ...(sourceType ? { receipt: { is: { sourceType } } } : {}) };
     const [items, totalItems] = await prisma.$transaction([
-        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { id: true, trackingNumber: true, sourceType: true, sourceRequestId: true, sourceRequest: { select: { id: true, trackingNumber: true } } } }, stockCount: { select: { id: true, trackingNumber: true, kind: true } }, wasteCase: { select: { id: true, trackingNumber: true } }, delivery: { select: { id: true, trackingNumber: true } }, workshopReceipt: { select: { id: true, trackingNumber: true, sourceType: true } } } }),
+        prisma.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: { code: true } }, product: { select: { code: true, displayName: true, unit: true } }, actor: identity, receipt: { select: { id: true, trackingNumber: true, sourceType: true, sourceRequestId: true, sourceRequest: { select: { id: true, trackingNumber: true } } } }, stockCount: { select: { id: true, trackingNumber: true, kind: true } }, wasteCase: { select: { id: true, trackingNumber: true } }, stockReturn: { select: { id: true, trackingNumber: true } }, delivery: { select: { id: true, trackingNumber: true } }, workshopReceipt: { select: { id: true, trackingNumber: true, sourceType: true } } } }),
         prisma.stockMovement.count({ where: movementWhere }),
     ]);
     return { items, totalItems, page, pageSize };

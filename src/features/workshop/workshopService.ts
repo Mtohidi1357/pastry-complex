@@ -143,7 +143,7 @@ export async function workshopList(user: CurrentUser, kind: "receipts" | "balanc
             return { items, totalItems, page, pageSize: 20 };
         }
         const movementWhere: Prisma.StockMovementWhereInput = { ...where, ...(sourceType || number !== null ? { workshopReceipt: { is: { ...(sourceType ? { sourceType } : {}), ...(number !== null ? { trackingNumber: number } : {}) } } } : {}) };
-        const [items, totalItems] = await Promise.all([tx.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch, product, actor: identity, workshopReceipt: { select: { id: true, trackingNumber: true, sourceType: true, sourceRequest } } } }), tx.stockMovement.count({ where: movementWhere })]);
+        const [items, totalItems] = await Promise.all([tx.stockMovement.findMany({ where: movementWhere, ...pagination, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch, product, actor: identity, stockReturn: { select: { id: true, trackingNumber: true } }, stockCount: { select: { id: true, trackingNumber: true, kind: true } }, delivery: { select: { id: true, trackingNumber: true } }, workshopReceipt: { select: { id: true, trackingNumber: true, sourceType: true, sourceRequest } } } }), tx.stockMovement.count({ where: movementWhere })]);
         return { items, totalItems, page, pageSize: 20 };
     }, { isolationLevel: "RepeatableRead" });
 }

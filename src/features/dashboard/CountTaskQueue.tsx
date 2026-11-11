@@ -20,7 +20,7 @@ type Props = { token: string; showFinished: boolean; refresh: number; blocked: b
 export default function CountTaskQueue(props: Props) {
     let actor: Actor | null = null;
     try { actor = jwtDecode<Actor>(props.token); } catch { /* The API verifies authentication. */ }
-    if (!actor || actor.roleCode !== "BM") return null;
+    if (!actor || !["BM", "WM"].includes(actor.roleCode)) return null;
     return <CountTasks key={`${props.token}:${props.showFinished}`} {...props} actor={actor} />;
 }
 function CountTasks({ token, showFinished, refresh, blocked, onEditorChange, actor }: Props & { actor: Actor }) {
@@ -53,7 +53,7 @@ function CountTasks({ token, showFinished, refresh, blocked, onEditorChange, act
     }
     const locked = blocked || opening || !!selected;
     return <section className="mb-6 min-w-0 rounded-2xl border border-[#eadcc9] bg-white p-4 shadow-sm sm:p-5" aria-label="Stock count approval tasks">
-        <header className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-[#39291f]">Stock count approvals</h2><p className="mt-1 text-sm text-stone-600">Submitted physical counts and opening stock for your branch. Any eligible branch manager can review them.</p></div>
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-[#39291f]">Stock count approvals</h2><p className="mt-1 text-sm text-stone-600">Submitted counts for your location. The sales branch manager reviews sales counts; the workshop manager reviews workshop counts.</p></div>
             <button type="button" className={button} disabled={locked || loading} onClick={reloadList}>Refresh counts</button></header>
         {blocked && <p className="mb-3 text-sm text-amber-900">Close the other open editor before opening a count.</p>}
         {error && <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
@@ -67,9 +67,9 @@ function CountTasks({ token, showFinished, refresh, blocked, onEditorChange, act
                 <p className="mt-2 font-medium">{item.kind === "OPENING" ? "Opening stock" : "Physical stock count"} · {item.branch.code}</p><p className="mt-1 text-sm text-stone-600">{item.businessDate.slice(0, 10)} · {trackedUser(item.createdBy)}</p>
                 <button type="button" className={`${button} mt-3 w-full`} disabled={locked} onClick={() => { void open(item.id); }}>{item.status === "SUBMITTED" ? "Review count" : "View approved count"}</button>
             </li>)}</ul>
-            {!listing.items.length && <p className="rounded-lg bg-[#faf5ed] p-4 text-sm text-stone-600">{showFinished ? "No submitted or approved counts match." : "No counts are awaiting your branch's approval."}</p>}
+            {!listing.items.length && <p className="rounded-lg bg-[#faf5ed] p-4 text-sm text-stone-600">{showFinished ? "No submitted or approved counts match." : "No counts are awaiting your location's approval."}</p>}
             <nav aria-label="Count task pages" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm"><span>Page {page}</span><div className="flex gap-2"><button type="button" className={button} disabled={locked || page <= 1} onClick={() => { setPage(page - 1); setLoading(true); }}>Previous counts</button><button type="button" className={button} disabled={locked || page * listing.pageSize >= listing.totalItems} onClick={() => { setPage(page + 1); setLoading(true); }}>Next counts</button></div></nav>
         </>}
-        <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-stone-100 pt-3 text-sm"><Link href="/dashboard/stock-counts" className="text-amber-900 underline">All stock counts</Link><Link href="/dashboard/stock" className="text-amber-900 underline">Receiving & stock</Link><span className="text-stone-500">Manual receipts post when inventory confirms them; they have no separate manager approval.</span></footer>
+        <footer className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-stone-100 pt-3 text-sm"><Link href="/dashboard/stock-counts" className="text-amber-900 underline">All stock counts</Link><Link href={actor.roleCode === "WM" ? "/dashboard/workshop-stock" : "/dashboard/stock"} className="text-amber-900 underline">Stock balances</Link><span className="text-stone-500">Counts adjust this location only. Goods in transit remain tracked separately under Deliveries.</span></footer>
     </section>;
 }

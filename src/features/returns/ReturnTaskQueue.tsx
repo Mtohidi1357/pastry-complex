@@ -1,0 +1,17 @@
+"use client";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { trackingCode } from "@/lib/trackingCode";
+type Row = { id: string; trackingNumber: number; status: string; sourceBranch: { code: string }; destinationBranch: { code: string }; sourceRequest: { id: string; trackingNumber: number; status: string } | null };
+export default function ReturnTaskQueue({ token, refresh, blocked, showFinished }: { token: string; refresh: number; blocked: boolean; showFinished: boolean }) {
+    const [result, setResult] = useState<{ items: Row[]; totalItems: number } | null>(null), [error, setError] = useState<string | null>(null);
+    useEffect(() => {
+        const controller = new AbortController();
+        fetch(`/api/stock-returns?page=1&showFinished=${showFinished}`, { signal: controller.signal, cache: "no-store", headers: { Authorization: `Bearer ${token}` } })
+            .then(async response => { const body = await response.json(); if (!response.ok || !body.success) throw new Error(body.error?.message ?? "Return tasks could not be loaded."); return body.data as { items: Row[]; totalItems: number }; })
+            .then(value => { if (!controller.signal.aborted) { setResult(value); setError(null); } })
+            .catch((err: unknown) => { if (!controller.signal.aborted) { setResult(null); setError(err instanceof Error ? err.message : "Return tasks could not be loaded."); } });
+        return () => controller.abort();
+    }, [token, refresh, showFinished]);
+    return <section className="mb-5 rounded-2xl border border-[#eadcc9] bg-white p-4 shadow-sm" aria-label="Return tasks"><header className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold text-[#39291f]">Product returns {result ? `(${result.totalItems})` : ""}</h2>{blocked ? <button disabled className="rounded-lg border px-4 py-2 text-sm opacity-50">View returns</button> : <Link href="/dashboard/returns" className="rounded-lg border border-stone-300 px-4 py-2 text-sm">View returns</Link>}</header>{error && <p role="alert" className="text-sm text-red-800">{error}</p>}{!result && !error && <p role="status" className="text-sm text-stone-600">Loading return tasks…</p>}{result && !result.items.length && <p className="text-sm text-stone-600">No matching returns.</p>}{result && result.items.length > 0 && <><ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{result.items.map(row => <li key={row.id} className={`min-w-0 rounded-xl border p-3 text-sm ${row.status === "DRAFT" ? "border-amber-200 bg-amber-50" : row.status === "SUBMITTED" ? "border-violet-200 bg-violet-50" : row.status === "DISPATCHED" ? "border-sky-200 bg-sky-50" : "border-emerald-200 bg-emerald-50"}`}><strong>{trackingCode("RTN", row)}</strong><p className="mt-1">{row.sourceBranch.code} → {row.destinationBranch.code}</p><p className="mt-1">{row.status === "DRAFT" ? "Inventory draft" : row.status === "SUBMITTED" ? "Awaiting branch manager approval and dispatch" : row.status === "DISPATCHED" ? "Goods outstanding in return transit" : row.status}</p>{row.sourceRequest && <p className="mt-1">{trackingCode("REQ", row.sourceRequest)} · {row.sourceRequest.status === "CLOSED" ? "Linked to confirmed request receiving." : "Open returns to review this case."}</p>}</li>)}</ul>{result.totalItems > result.items.length && <p className="mt-3 text-sm text-stone-600">Showing {result.items.length} of {result.totalItems}. Open returns for all pages.</p>}</>}</section>;
+}
