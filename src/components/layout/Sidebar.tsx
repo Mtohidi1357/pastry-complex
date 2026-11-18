@@ -11,9 +11,10 @@ import { canViewStock } from "@/features/stock/stockPolicy";
 import styles from "./Sidebar.module.css";
 
 type Props = { isOpen: boolean; onClose: () => void };
-type SymbolName = "return" | "workshop" | "waste" | "count" | "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
+type SymbolName = "sales" | "return" | "workshop" | "waste" | "count" | "catalog" | "stock" | "inbox" | "monitor" | "trash" | "plus" | "refresh" | "logout" | "chevron" | "close";
 function SidebarIcon({ name }: { name: SymbolName }) {
     const paths: Record<SymbolName, string> = {
+        sales: "M4 5h16v16H4z M8 3v4 M16 3v4 M4 10h16 M8 14h2 M14 14h2 M8 18h2 M14 18h2",
         return: "M9 4 4 9l5 5 M4 9h10a6 6 0 0 1 0 12h-3",
         workshop: "M3 21V9l6-3v5l6-4v4l6-3v13H3 M6 15h3 M12 15h3 M17 15h2 M6 18h3 M12 18h3 M17 18h2",
         waste: "M4 7h16 M9 7V4h6v3 M6 7l1 14h10l1-14 M10 11l4 6 M14 11l-4 6",
@@ -48,6 +49,7 @@ export default function Sidebar({ isOpen, onClose }: Props) {
         ...(["WM", "INV", "BM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/deliveries", label: "Deliveries & transit", icon: "stock" as const }] : []),
         ...(["INV", "BM", "WM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/stock-counts", label: "Physical stock counts", icon: "count" as const }] : []),
         ...(["INV", "BM", "WM", "ADMIN"].includes(user?.roleCode ?? "") ? [{ href: "/dashboard/returns", label: "Product returns", icon: "return" as const }, { href: user?.roleCode === "ADMIN" ? "/dashboard/inventory-monitor" : "/dashboard/inventory", label: user?.roleCode === "ADMIN" ? "Inventory Monitor" : "Inventory & transit", icon: "monitor" as const }] : []),
+        ...(["INV", "BM", "ADMIN"].includes(user?.roleCode ?? "") && (user?.roleCode === "ADMIN" || branchType !== "BAKERY") ? [{ href: "/dashboard/sales", label: "Daily sales", icon: "sales" as const }] : []),
         ...(user?.roleCode === "ADMIN" ? [{ href: "/dashboard/monitor", label: "Request Monitor", icon: "monitor" as const }, { href: "/dashboard/products", label: "Products", icon: "catalog" as const }] : []),
         ...(canRestoreRequests(user?.roleCode) ? [{ href: "/dashboard/trash", label: "Deleted requests", icon: "trash" as const }] : []),
     ];

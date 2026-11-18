@@ -1,0 +1,11 @@
+import { z } from "zod";
+import { showFinishedQuery } from "@/lib/listVisibility";
+const line = z.object({ productId: z.uuid(), quantity: z.string().regex(/^\d{1,9}(?:\.\d{1,3})?$/) }).strict();
+const entry = { note: z.string().trim().max(1000), lines: z.array(line).min(1).max(200), clientRequestId: z.uuid() };
+export const salesCreateBody = z.object({ ...entry, businessDate: z.string(), correctsReportId: z.uuid().optional() }).strict();
+export const salesSaveBody = z.object({ ...entry, version: z.number().int().positive() }).strict();
+export const salesActionBody = z.object({ version: z.number().int().positive(), clientRequestId: z.uuid(), reason: z.string().trim().min(5).max(1000) }).strict();
+export const salesQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).default(1), showFinished: showFinishedQuery, reference: z.string().trim().max(14).optional(), branchId: z.uuid().optional(), businessDate: z.string().optional(), status: z.enum(["DRAFT", "SUBMITTED", "POSTED", "REVERSED", "CANCELLED"]).optional() }).strict();
+export type SalesCreate = z.infer<typeof salesCreateBody>;
+export type SalesSave = z.infer<typeof salesSaveBody>;
+export type SalesAction = z.infer<typeof salesActionBody>;

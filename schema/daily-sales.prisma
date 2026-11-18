@@ -1,0 +1,85 @@
+enum SalesReportStatus {
+  DRAFT
+  SUBMITTED
+  POSTED
+  REVERSED
+  CANCELLED
+}
+model SalesDay {
+  id String @id @default(uuid())
+  branchId String
+  businessDate DateTime
+  activeReportId String? @unique
+  branch Branch @relation(fields: [branchId], references: [id])
+  activeReport SalesReport? @relation("ActiveSalesReport", fields: [activeReportId], references: [id], onDelete: SetNull)
+  reports SalesReport[] @relation("SalesDayReports")
+  @@unique([branchId, businessDate])
+  @@map("sales_days")
+}
+model SalesReport {
+  id String @id @default(uuid())
+  trackingNumber Int @unique @default(autoincrement())
+  clientRequestId String @unique
+  createHash String @db.Char(64)
+  dayId String
+  branchId String
+  businessDate DateTime
+  status SalesReportStatus @default(DRAFT)
+  version Int @default(1)
+  note String @db.Text
+  createdById String
+  postedById String?
+  reversedById String?
+  postedAt DateTime?
+  reversedAt DateTime?
+  reversalReason String? @db.Text
+  correctsReportId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  day SalesDay @relation("SalesDayReports", fields: [dayId], references: [id])
+  activeForDay SalesDay? @relation("ActiveSalesReport")
+  branch Branch @relation(fields: [branchId], references: [id])
+  createdBy User @relation("SalesCreator", fields: [createdById], references: [id])
+  postedBy User? @relation("SalesPoster", fields: [postedById], references: [id])
+  reversedBy User? @relation("SalesReverser", fields: [reversedById], references: [id])
+  corrects SalesReport? @relation("SalesCorrections", fields: [correctsReportId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  corrections SalesReport[] @relation("SalesCorrections")
+  lines SalesReportLine[]
+  events SalesReportEvent[]
+  movements StockMovement[]
+  @@index([branchId, status, businessDate])
+  @@index([dayId])
+  @@index([createdById])
+  @@index([postedById])
+  @@index([reversedById])
+  @@index([correctsReportId])
+  @@map("sales_reports")
+}
+model SalesReportLine {
+  id String @id @default(uuid())
+  reportId String
+  productId String
+  quantity Decimal @db.Decimal(18, 3)
+  report SalesReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  @@unique([reportId, productId])
+  @@index([productId])
+  @@map("sales_report_lines")
+}
+model SalesReportEvent {
+  id String @id @default(uuid())
+  reportId String
+  actorId String
+  action String
+  version Int
+  clientRequestId String? @unique
+  payloadHash String? @db.Char(64)
+  note String @db.Text
+  payload Json
+  createdAt DateTime @default(now())
+  report SalesReport @relation(fields: [reportId], references: [id])
+  actor User @relation("SalesActor", fields: [actorId], references: [id])
+  @@index([reportId, createdAt])
+  @@index([actorId])
+  @@map("sales_report_events")
+}

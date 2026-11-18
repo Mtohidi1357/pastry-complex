@@ -29,7 +29,7 @@ export async function inventoryReport(user: CurrentUser, query: Query) {
         const ids = branches.map(branch => branch.id), where: Prisma.StockMovementWhereInput = { branchId: { in: ids }, ...(query.productId ? { productId: query.productId } : {}) }, pageSize = 25;
         if (query.view === "movements") {
             const [items, totalItems] = await Promise.all([
-                tx.stockMovement.findMany({ where, skip: (query.page - 1) * pageSize, take: pageSize, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: location }, product: { select: { code: true, displayName: true, unit: true } }, actor: { select: identity }, stockReturn: { select: reference }, delivery: { select: reference }, stockCount: { select: reference }, receipt: { select: reference }, workshopReceipt: { select: reference } } }),
+                tx.stockMovement.findMany({ where, skip: (query.page - 1) * pageSize, take: pageSize, orderBy: [{ postedAt: "desc" }, { id: "asc" }], include: { branch: { select: location }, product: { select: { code: true, displayName: true, unit: true } }, actor: { select: identity }, salesReport: { select: reference }, stockReturn: { select: reference }, delivery: { select: reference }, stockCount: { select: reference }, receipt: { select: reference }, workshopReceipt: { select: reference } } }),
                 tx.stockMovement.count({ where }),
             ]); return { view: query.view, items, totalItems, pageSize, totals: [], branches };
         }

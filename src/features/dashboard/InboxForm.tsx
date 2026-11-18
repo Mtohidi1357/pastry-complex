@@ -1,4 +1,5 @@
 "use client";
+import SalesTaskQueue from "../sales/SalesTaskQueue";
 import ReturnTaskQueue from "../returns/ReturnTaskQueue";
 import DeliveryTaskQueue from "../delivery/DeliveryTaskQueue";
 import CountTaskQueue from "./CountTaskQueue";
@@ -231,6 +232,7 @@ useEffect(() => {
                     <input type="checkbox" checked={showFinished} disabled={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} onChange={event => { setShowFinished(event.target.checked); setInboxPage(1); setInbox([]); setTotalItems(0); setError(null); setLoading(true); }} />
                     Show finished items
                 </label>
+                {token && ["INV", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <SalesTaskQueue token={token} role={user?.role?.code ?? ""} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
                 {token && ["INV", "WM", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <ReturnTaskQueue token={token} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
                 {token && ["INV", "WM", "BM", "ADMIN"].includes(user?.role?.code ?? "") && <DeliveryTaskQueue token={token} refresh={countRefresh} blocked={selectedRequestId !== null || countEditorOpen || wasteEditorOpen} showFinished={showFinished} />}
                 {["BM", "WM"].includes(user?.role?.code ?? "") && token && <CountTaskQueue token={token} showFinished={showFinished} refresh={countRefresh} blocked={selectedRequestId !== null || wasteEditorOpen} onEditorChange={setCountEditorOpen} />}
